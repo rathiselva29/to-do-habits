@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider } from './context/AppContext';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -8,6 +8,7 @@ import { OfflineBanner } from './components/OfflineBanner';
 import { StreakCelebration } from './components/StreakCelebration';
 import { OnboardingModal } from './components/OnboardingModal';
 import { AuthModal } from './components/AuthModal';
+import { RootAuthView } from './components/RootAuthView';
 import { HabitCreatorModal } from './components/HabitCreatorModal';
 import { HabitDetailsModal } from './components/HabitDetailsModal';
 import { DashboardView } from './components/DashboardView';
@@ -19,8 +20,10 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { CalendarView } from './components/CalendarView';
 import { ProfileView } from './components/ProfileView';
 import { Habit } from './types';
+import { Logo } from './components/Logo';
 
-function MainApp() {
+function AppContent() {
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isNewHabitOpen, setIsNewHabitOpen] = useState(false);
@@ -39,6 +42,33 @@ function MainApp() {
     setEditingHabit(null);
   };
 
+  // 1. Loading State
+  if (isLoading) {
+    return (
+      <div className="min-h-screen frosted-bg flex flex-col items-center justify-center p-4">
+        <div className="animate-pulse flex flex-col items-center gap-3">
+          <Logo size={44} showText={true} />
+          <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mt-2" />
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Unauthenticated Root View: Login / Sign Up Page
+  if (!isAuthenticated || !user) {
+    return <RootAuthView />;
+  }
+
+  // 3. Authenticated but First Time User: 3-Step Onboarding Flow
+  if (!user.isOnboarded) {
+    return (
+      <div className="min-h-screen frosted-bg flex flex-col items-center justify-center p-4">
+        <OnboardingModal />
+      </div>
+    );
+  }
+
+  // 4. Authenticated & Onboarded: Full Workspace Dashboard
   return (
     <div className="min-h-screen frosted-bg text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-300">
       {/* Offline Status & Sync Alert */}
@@ -115,7 +145,6 @@ function MainApp() {
 
       {/* Modals & Overlays */}
       <StreakCelebration />
-      <OnboardingModal />
 
       <AuthModal
         isOpen={isAuthOpen}
@@ -142,7 +171,7 @@ export default function App() {
   return (
     <AuthProvider>
       <AppProvider>
-        <MainApp />
+        <AppContent />
       </AppProvider>
     </AuthProvider>
   );

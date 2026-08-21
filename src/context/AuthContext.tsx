@@ -14,6 +14,7 @@ interface AuthContextType {
   logout: () => void;
   updateProfile: (updates: Partial<UserProfile>) => void;
   completeOnboarding: (onboardingData: {
+    name?: string;
     selectedCategories: HabitCategory[];
     goals: string[];
     reminderTimePreference: string;
@@ -35,9 +36,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const saved = StorageService.getProfile();
       if (saved && saved.email) {
         setUser(saved);
+      } else {
+        setUser(null);
       }
     } catch (e) {
       console.error('Error loading profile', e);
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
@@ -47,13 +51,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     try {
       const res = await ApiService.login(email, password);
-      // Fetch or init user profile
       const current = StorageService.getProfile();
       const updatedUser: UserProfile = {
-        ...current,
+        ...(current || DEFAULT_PROFILE),
         id: res.user.id,
         email: res.user.email,
-        name: res.user.name || current.name,
+        name: res.user.name || current?.name || email.split('@')[0],
+        isOnboarded: current?.isOnboarded ?? false, // If first time login, prompt onboarding!
       };
       StorageService.saveProfile(updatedUser);
       setUser(updatedUser);
@@ -70,8 +74,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         ...DEFAULT_PROFILE,
         id: res.user.id,
         email: res.user.email,
-        name: res.user.name,
-        isOnboarded: false, // Trigger onboarding for fresh registered user!
+        name: res.user.name || name,
+        isOnboarded: false, // Trigger 3-step onboarding flow!
         createdAt: new Date().toISOString(),
       };
       StorageService.saveProfile(newUser);
@@ -91,7 +95,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('aura_auth_token');
+    StorageService.resetAllData();
   };
 
   const updateProfile = (updates: Partial<UserProfile>) => {
@@ -102,6 +106,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const completeOnboarding = (onboardingData: {
+    name?: string;
     selectedCategories: HabitCategory[];
     goals: string[];
     reminderTimePreference: string;
@@ -112,6 +117,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const updated: UserProfile = {
       ...user,
       ...onboardingData,
+      name: onboardingData.name || user.name || 'Friend',
       isOnboarded: true,
     };
     StorageService.saveProfile(updated);
@@ -119,8 +125,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const fillDemoAccount = () => {
-    StorageService.saveProfile(DEFAULT_PROFILE);
-    setUser(DEFAULT_PROFILE);
+    const demoUser: UserProfile = {
+      ...DEFAULT_PROFILE,
+      id: 'guest-user-1',
+      email: 'guest@todo-habits.app',
+      name: 'Guest Explorer',
+      isOnboarded: false, // Let guest also walk through the onboarding steps!
+    };
+    StorageService.saveProfile(demoUser);
+    setUser(demoUser);
   };
 
   return (
