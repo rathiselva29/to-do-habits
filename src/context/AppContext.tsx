@@ -17,6 +17,7 @@ import {
   calculateWellnessScore 
 } from '../services/storage';
 import { ApiService } from '../services/api';
+import { FirestoreDataService } from '../services/firestoreData';
 import { useAuth } from './AuthContext';
 import confetti from 'canvas-confetti';
 
@@ -64,7 +65,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, firebaseUser } = useAuth();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
   const [moodEntries, setMoodEntries] = useState<MoodEntry[]>([]);
@@ -78,7 +79,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [theme, setThemeState] = useState<'light' | 'dark'>('light');
   const [celebrationEvent, setCelebrationEvent] = useState<{ type: 'streak' | 'all_done'; streakCount?: number } | null>(null);
 
-  // Initialize data from local durable storage
+  // Initialize data from local durable storage initially
   useEffect(() => {
     const loadedHabits = StorageService.getHabits();
     const loadedCompletions = StorageService.getCompletions();
@@ -118,11 +119,52 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, []);
 
+  // Real-time Firestore Subscriptions when user is logged in
+  useEffect(() => {
+    if (!firebaseUser?.uid) return;
+
+    const currentUserId = firebaseUser.uid;
+
+    const unsubHabits = FirestoreDataService.subscribeHabits(currentUserId, (remoteHabits) => {
+      if (remoteHabits.length > 0) {
+        setHabits(remoteHabits);
+        StorageService.saveHabits(remoteHabits);
+      }
+    });
+
+    const unsubCompletions = FirestoreDataService.subscribeCompletions(currentUserId, (remoteComps) => {
+      if (remoteComps.length > 0) {
+        setCompletions(remoteComps);
+        StorageService.saveCompletions(remoteComps);
+      }
+    });
+
+    const unsubMoods = FirestoreDataService.subscribeMoods(currentUserId, (remoteMoods) => {
+      if (remoteMoods.length > 0) {
+        setMoodEntries(remoteMoods);
+        StorageService.saveMoods(remoteMoods);
+      }
+    });
+
+    const unsubMetrics = FirestoreDataService.subscribeHealthMetrics(currentUserId, (remoteMetrics) => {
+      if (remoteMetrics.length > 0) {
+        setHealthMetrics(remoteMetrics);
+        StorageService.saveHealthMetrics(remoteMetrics);
+      }
+    });
+
+    return () => {
+      unsubHabits();
+      unsubCompletions();
+      unsubMoods();
+      unsubMetrics();
+    };
+  }, [firebaseUser?.uid]);
+
   // Online / Offline Listeners
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      // Auto-trigger sync when back online
       triggerManualSync();
     };
     const handleOffline = () => {
@@ -153,7 +195,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         colors: ['#10b981', '#06b6d4', '#6366f1', '#f59e0b'],
       });
     } catch {
-      // Fallback safe
+      // safe fallback
     }
   };
 
@@ -168,7 +210,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       StorageService.clearSyncQueue();
       setSyncQueue([]);
     } catch (e) {
-      console.warn('Sync attempt postponed', e);
+      console.warn('Sync attempt note:', e);
     } finally {
       setIsSyncing(false);
     }
@@ -182,12 +224,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (existingIndex >= 0) {
       // Uncomplete
+      const existingComp = completions[existingIndex];
       newCompletions = completions.filter((_, idx) => idx !== existingIndex);
       StorageService.addToSyncQueue({
         entity: 'completion',
         action: 'delete',
         payload: { habitId, date: dateStr },
       });
+      if (existingComp?.id) {
+        FirestoreDataService.deleteCompletion(existingComp.id);
+      }
     } else {
       // Complete
       isCompletedNow = true;
@@ -195,7 +241,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const newCompletion: HabitCompletion = {
         id: `comp-${habitId}-${dateStr}-${Date.now()}`,
         habitId,
-        userId: user?.id || 'demo-user',
+        userId: user?.id || firebaseUser?.uid || 'user-1',
         date: dateStr,
         completedAt: new Date().toISOString(),
         value: targetHabit?.goalTarget || 1,
@@ -206,8 +252,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         action: 'create',
         payload: newCompletion,
       });
+      FirestoreDataService.saveCompletion(newCompletion);
 
-      // Trigger celebratory micro-interaction
       triggerConfetti();
     }
 
@@ -221,13 +267,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (isCompletedNow && stats.currentStreak > 0 && stats.currentStreak % 5 === 0) {
           setCelebrationEvent({ type: 'streak', streakCount: stats.currentStreak });
         }
-        return {
+        const updatedHabitItem = {
           ...h,
           streak: stats.currentStreak,
           bestStreak: stats.bestStreak,
           totalCompletions: stats.totalCompletions,
           updatedAt: new Date().toISOString(),
         };
+        FirestoreDataService.saveHabit(updatedHabitItem);
+        return updatedHabitItem;
       }
       return h;
     });
@@ -248,7 +296,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const newHabit: Habit = {
       ...newHabitData,
       id: habitId,
-      userId: user?.id || 'demo-user',
+      userId: user?.id || firebaseUser?.uid || 'user-1',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       streak: 0,
@@ -259,6 +307,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = [newHabit, ...habits];
     StorageService.saveHabits(updated);
     setHabits(updated);
+    FirestoreDataService.saveHabit(newHabit);
     StorageService.addToSyncQueue({
       entity: 'habit',
       action: 'create',
@@ -267,7 +316,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateHabit = (id: string, updates: Partial<Habit>) => {
-    const updated = habits.map(h => (h.id === id ? { ...h, ...updates, updatedAt: new Date().toISOString() } : h));
+    const updated = habits.map(h => {
+      if (h.id === id) {
+        const item = { ...h, ...updates, updatedAt: new Date().toISOString() };
+        FirestoreDataService.saveHabit(item);
+        return item;
+      }
+      return h;
+    });
     StorageService.saveHabits(updated);
     setHabits(updated);
     StorageService.addToSyncQueue({
@@ -284,6 +340,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     StorageService.saveCompletions(updatedCompletions);
     setHabits(updated);
     setCompletions(updatedCompletions);
+    FirestoreDataService.deleteHabit(id);
     StorageService.addToSyncQueue({
       entity: 'habit',
       action: 'delete',
@@ -307,7 +364,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const logMood = (score: 1 | 2 | 3 | 4 | 5, emotions: any[], notes?: string, dateStr: string = getTodayDateString()) => {
     const newEntry: MoodEntry = {
       id: `mood-${dateStr}-${Date.now()}`,
-      userId: user?.id || 'demo-user',
+      userId: user?.id || firebaseUser?.uid || 'user-1',
       date: dateStr,
       timestamp: new Date().toISOString(),
       score,
@@ -318,6 +375,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = [newEntry, ...filtered];
     StorageService.saveMoods(updated);
     setMoodEntries(updated);
+    FirestoreDataService.saveMood(newEntry);
     StorageService.addToSyncQueue({
       entity: 'mood',
       action: 'create',
@@ -329,29 +387,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const logHealthMetric = (metricUpdates: Partial<HealthMetric>, dateStr: string = getTodayDateString()) => {
     const existingIndex = healthMetrics.findIndex(m => m.date === dateStr);
     let updated: HealthMetric[];
+    let targetMetric: HealthMetric;
 
     if (existingIndex >= 0) {
       const current = healthMetrics[existingIndex];
-      const merged: HealthMetric = {
+      targetMetric = {
         ...current,
         ...metricUpdates,
         updatedAt: new Date().toISOString(),
       };
       updated = [...healthMetrics];
-      updated[existingIndex] = merged;
+      updated[existingIndex] = targetMetric;
     } else {
-      const newMetric: HealthMetric = {
+      targetMetric = {
         id: `metric-${dateStr}-${Date.now()}`,
-        userId: user?.id || 'demo-user',
+        userId: user?.id || firebaseUser?.uid || 'user-1',
         date: dateStr,
         updatedAt: new Date().toISOString(),
         ...metricUpdates,
       };
-      updated = [newMetric, ...healthMetrics];
+      updated = [targetMetric, ...healthMetrics];
     }
 
     StorageService.saveHealthMetrics(updated);
     setHealthMetrics(updated);
+    FirestoreDataService.saveHealthMetric(targetMetric);
     StorageService.addToSyncQueue({
       entity: 'metric',
       action: 'update',

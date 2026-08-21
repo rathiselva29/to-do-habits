@@ -1,0 +1,106 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with personalized routine preferences",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "selectedCategories": { "type": "array", "items": { "type": "string" } },
+        "goals": { "type": "array", "items": { "type": "string" } },
+        "reminderTimePreference": { "type": "string" },
+        "wakeTime": { "type": "string" },
+        "sleepTime": { "type": "string" },
+        "isOnboarded": { "type": "boolean" },
+        "theme": { "type": "string" },
+        "units": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email"]
+    },
+    "Habit": {
+      "title": "Habit",
+      "description": "Habit track entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "frequency": { "type": "string" },
+        "targetValue": { "type": "number" },
+        "unit": { "type": "string" },
+        "reminderTime": { "type": "string" },
+        "isArchived": { "type": "boolean" },
+        "isPaused": { "type": "boolean" },
+        "streak": { "type": "number" },
+        "bestStreak": { "type": "number" },
+        "totalCompletions": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "name", "category"]
+    },
+    "HabitCompletion": {
+      "title": "HabitCompletion",
+      "description": "Actual record of a completed habit on a specific date",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "habitId": { "type": "string" },
+        "date": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "value": { "type": "number" }
+      },
+      "required": ["id", "userId", "habitId", "date"]
+    },
+    "MoodEntry": {
+      "title": "MoodEntry",
+      "description": "Original daily mood entry logged by the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "score": { "type": "number" },
+        "label": { "type": "string" },
+        "energy": { "type": "number" },
+        "note": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "loggedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "date", "score", "label"]
+    },
+    "HealthMetric": {
+      "title": "HealthMetric",
+      "description": "Original daily health and body metric readings logged by the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "sleepHours": { "type": "number" },
+        "steps": { "type": "number" },
+        "waterMl": { "type": "number" },
+        "exerciseMinutes": { "type": "number" },
+        "heartRate": { "type": "number" },
+        "weightKg": { "type": "number" },
+        "notes": { "type": "string" },
+        "loggedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "date"]
+    }
+  },
+  "firestore": {
+    "collections": {
+      "users": { "entity": "UserProfile", "description": "User profiles" },
+      "habits": { "entity": "Habit", "description": "User habit definitions" },
+      "completions": { "entity": "HabitCompletion", "description": "Habit completion records" },
+      "moods": { "entity": "MoodEntry", "description": "Daily mood entries" },
+      "health_metrics": { "entity": "HealthMetric", "description": "Daily health metric readings" }
+    }
+  }
+}

@@ -5,7 +5,6 @@ import {
   User, 
   Eye, 
   EyeOff, 
-  Sparkles, 
   ArrowRight, 
   ShieldCheck, 
   CheckCircle2, 
@@ -15,18 +14,16 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Logo } from './Logo';
-import { getSupabase } from '../services/supabase';
 
 export const RootAuthView: React.FC = () => {
-  const { login, register, forgotPassword, resetPassword, fillDemoAccount } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot' | 'reset'>('login');
+  const { login, register, loginWithGoogle, forgotPassword } = useAuth();
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   
   // Form states
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [resetToken, setResetToken] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   
   const [loading, setLoading] = useState(false);
@@ -68,28 +65,9 @@ export const RootAuthView: React.FC = () => {
         }
         const res = await forgotPassword(email.trim());
         setSuccessMsg(res.message);
-        if (res.resetToken) {
-          setResetToken(res.resetToken);
-          setMode('reset');
-        }
-      } else if (mode === 'reset') {
-        if (!email.trim() || !password) {
-          throw new Error('Please enter your new password.');
-        }
-        if (!isPasswordValid) {
-          throw new Error('New password must be at least 8 characters with letters & numbers.');
-        }
-        if (password !== confirmPassword) {
-          throw new Error('Passwords do not match.');
-        }
-        await resetPassword(email.trim(), resetToken, password);
-        setSuccessMsg('Password successfully updated! Please sign in with your new password.');
-        setMode('login');
-        setPassword('');
-        setConfirmPassword('');
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'An error occurred. Please try again.');
+      setErrorMsg(err.message || 'An error occurred. Please verify your credentials.');
     } finally {
       setLoading(false);
     }
@@ -97,23 +75,12 @@ export const RootAuthView: React.FC = () => {
 
   const handleGoogleSignIn = async () => {
     setErrorMsg(null);
+    setSuccessMsg(null);
     setLoading(true);
     try {
-      const supabase = getSupabase();
-      if (supabase) {
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: window.location.origin,
-          },
-        });
-        if (error) throw error;
-      } else {
-        // Fallback demo for preview environment
-        fillDemoAccount();
-      }
+      await loginWithGoogle();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Google sign-in is not configured yet. You can use email/password.');
+      setErrorMsg(err.message || 'Google sign-in could not be completed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -121,7 +88,7 @@ export const RootAuthView: React.FC = () => {
 
   return (
     <div className="min-h-screen frosted-bg text-slate-900 dark:text-slate-100 flex flex-col justify-center items-center p-4 sm:p-6 transition-colors duration-300">
-      {/* Background ambient accents */}
+      {/* Ambient backgrounds */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none -z-10" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none -z-10" />
 
@@ -132,7 +99,7 @@ export const RootAuthView: React.FC = () => {
             <Logo size={48} showText={true} />
           </div>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-xs mt-1">
-            Build consistency, track daily routines, and grow with AI-powered coaching.
+            Build consistency, track daily routines, and record genuine wellness readings.
           </p>
         </div>
 
@@ -184,22 +151,7 @@ export const RootAuthView: React.FC = () => {
                 Reset Password
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Enter your account email to receive a secure password reset link.
-              </p>
-            </div>
-          )}
-
-          {/* Reset Password Header */}
-          {mode === 'reset' && (
-            <div className="text-center mb-6">
-              <div className="w-12 h-12 rounded-2xl ai-gradient flex items-center justify-center text-white mx-auto mb-3 shadow-lg shadow-indigo-500/25">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                Set New Password
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Choose a strong original password with at least 8 characters.
+                Enter your account email to receive an official password reset link.
               </p>
             </div>
           )}
@@ -208,14 +160,14 @@ export const RootAuthView: React.FC = () => {
           {errorMsg && (
             <div className="mb-5 p-3.5 rounded-2xl bg-rose-50/90 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/60 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2.5 animate-fadeIn">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span className="leading-relaxed">{errorMsg}</span>
+              <span className="leading-relaxed font-medium">{errorMsg}</span>
             </div>
           )}
 
           {successMsg && (
             <div className="mb-5 p-3.5 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-xs flex items-start gap-2.5 animate-fadeIn">
               <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-              <span className="leading-relaxed">{successMsg}</span>
+              <span className="leading-relaxed font-medium">{successMsg}</span>
             </div>
           )}
 
@@ -231,7 +183,7 @@ export const RootAuthView: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="Alex Rivera"
+                    placeholder="Your Name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full glass-input rounded-2xl pl-10 pr-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -249,7 +201,7 @@ export const RootAuthView: React.FC = () => {
                 <input
                   type="email"
                   required
-                  placeholder="name@example.com"
+                  placeholder="yourname@gmail.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full glass-input rounded-2xl pl-10 pr-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -261,7 +213,7 @@ export const RootAuthView: React.FC = () => {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    {mode === 'reset' ? 'New Password' : 'Password'}
+                    Password
                   </label>
                   {mode === 'login' && (
                     <button
@@ -282,7 +234,7 @@ export const RootAuthView: React.FC = () => {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
-                    placeholder="••••••••"
+                    placeholder="Enter your account password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full glass-input rounded-2xl pl-10 pr-11 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -298,7 +250,7 @@ export const RootAuthView: React.FC = () => {
               </div>
             )}
 
-            {(mode === 'register' || mode === 'reset') && (
+            {mode === 'register' && (
               <>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -309,7 +261,7 @@ export const RootAuthView: React.FC = () => {
                     <input
                       type={showPassword ? 'text' : 'password'}
                       required
-                      placeholder="••••••••"
+                      placeholder="Re-enter your password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       className="w-full glass-input rounded-2xl pl-10 pr-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -358,10 +310,9 @@ export const RootAuthView: React.FC = () => {
               ) : (
                 <>
                   <span>
-                    {mode === 'login' && 'Sign In to To-Do-Habits'}
-                    {mode === 'register' && 'Create Account & Continue'}
-                    {mode === 'forgot' && 'Send Reset Link'}
-                    {mode === 'reset' && 'Update Password'}
+                    {mode === 'login' && 'Sign In with Email'}
+                    {mode === 'register' && 'Register Authentic Account'}
+                    {mode === 'forgot' && 'Send Password Reset Link'}
                   </span>
                   <ArrowRight className="w-4 h-4" />
                 </>
@@ -408,22 +359,11 @@ export const RootAuthView: React.FC = () => {
                 </svg>
                 <span>Continue with Google</span>
               </button>
-
-              {/* Guest / Explore option */}
-              <div className="mt-5 text-center">
-                <button
-                  type="button"
-                  onClick={fillDemoAccount}
-                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
-                >
-                  Explore as Guest with Quick Preview
-                </button>
-              </div>
             </>
           )}
 
           {/* Back to sign in link */}
-          {(mode === 'forgot' || mode === 'reset') && (
+          {mode === 'forgot' && (
             <div className="mt-5 text-center">
               <button
                 type="button"
@@ -440,10 +380,10 @@ export const RootAuthView: React.FC = () => {
           )}
         </div>
 
-        {/* Trust & Privacy notice */}
+        {/* Security & Verification Notice */}
         <div className="text-center mt-6 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-          <span>Encrypted authentic storage • No fake data • Private by design</span>
+          <span>Real-time cloud database storage • Authentic credentials</span>
         </div>
       </div>
     </div>

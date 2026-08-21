@@ -10,8 +10,8 @@ import {
   ShieldCheck, 
   CheckCircle2, 
   AlertCircle,
-  KeyRound,
-  X
+  X,
+  Check
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -22,15 +22,14 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'login' }) => {
-  const { login, register, forgotPassword, resetPassword, fillDemoAccount } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot' | 'reset'>(initialMode);
+  const { login, register, loginWithGoogle, forgotPassword } = useAuth();
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialMode);
   
   // Form states
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [resetToken, setResetToken] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   
   const [loading, setLoading] = useState(false);
@@ -39,21 +38,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
 
   if (!isOpen) return null;
 
-  // Password strength calculation
-  const getPasswordStrength = (pass: string) => {
-    if (!pass) return 0;
-    let score = 0;
-    if (pass.length >= 6) score++;
-    if (pass.length >= 10) score++;
-    if (/[A-Z]/.test(pass)) score++;
-    if (/[0-9]/.test(pass)) score++;
-    if (/[^A-Za-z0-9]/.test(pass)) score++;
-    return Math.min(score, 4);
-  };
-
-  const strengthScore = getPasswordStrength(password);
-  const strengthLabels = ['Weak', 'Fair', 'Good', 'Strong'];
-  const strengthColors = ['bg-rose-500', 'bg-amber-500', 'bg-blue-500', 'bg-emerald-500'];
+  const hasMinLength = password.length >= 8;
+  const hasLetters = /[a-zA-Z]/.test(password);
+  const hasNumbers = /[0-9]/.test(password);
+  const isPasswordValid = hasMinLength && hasLetters && hasNumbers;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,29 +51,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
 
     try {
       if (mode === 'login') {
-        if (!email || !password) throw new Error('Please fill in all fields.');
-        await login(email, password);
+        if (!email.trim() || !password) throw new Error('Please fill in your email and password.');
+        await login(email.trim(), password);
         onClose();
       } else if (mode === 'register') {
-        if (!name || !email || !password) throw new Error('Please fill in all required fields.');
+        if (!name.trim() || !email.trim() || !password) throw new Error('Please fill in all required fields.');
+        if (!isPasswordValid) throw new Error('Password must be at least 8 characters and contain letters and numbers.');
         if (password !== confirmPassword) throw new Error('Passwords do not match.');
-        if (password.length < 6) throw new Error('Password must be at least 6 characters.');
-        await register(name, email, password);
+        await register(name.trim(), email.trim(), password);
         onClose();
       } else if (mode === 'forgot') {
-        if (!email) throw new Error('Please enter your account email.');
-        const res = await forgotPassword(email);
+        if (!email.trim()) throw new Error('Please enter your account email.');
+        const res = await forgotPassword(email.trim());
         setSuccessMsg(res.message);
-        if (res.resetToken) {
-          setResetToken(res.resetToken);
-          setMode('reset');
-        }
-      } else if (mode === 'reset') {
-        if (!email || !password) throw new Error('Please enter your new password.');
-        if (password !== confirmPassword) throw new Error('Passwords do not match.');
-        await resetPassword(email, resetToken, password);
-        setSuccessMsg('Password reset successfully! Please sign in.');
-        setMode('login');
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'An error occurred. Please try again.');
@@ -94,9 +72,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
     }
   };
 
-  const handleQuickDemo = () => {
-    fillDemoAccount();
-    onClose();
+  const handleGoogleSignIn = async () => {
+    setErrorMsg(null);
+    setLoading(true);
+    try {
+      await loginWithGoogle();
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Google sign-in could not be completed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -115,16 +101,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
             <Sparkles className="w-6 h-6" />
           </div>
           <h3 className="text-2xl font-bold text-slate-900 dark:text-white">
-            {mode === 'login' && 'Welcome to Aura'}
-            {mode === 'register' && 'Create Your Aura Account'}
-            {mode === 'forgot' && 'Reset Password'}
-            {mode === 'reset' && 'Set New Password'}
+            {mode === 'login' && 'Sign In to To-Do-Habits'}
+            {mode === 'register' && 'Create Your Account'}
+            {mode === 'forgot' && 'Reset Account Password'}
           </h3>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {mode === 'login' && 'Sign in to sync your habits, mood, and AI coaching.'}
-            {mode === 'register' && 'Begin your mindful daily transformation today.'}
-            {mode === 'forgot' && 'Enter your email to receive recovery instructions.'}
-            {mode === 'reset' && 'Choose a secure password for your account.'}
+            {mode === 'login' && 'Sign in to access your habits, mood logs, and health readings.'}
+            {mode === 'register' && 'Create your account to start building lasting daily consistency.'}
+            {mode === 'forgot' && 'Enter your email to receive an official password reset link.'}
           </p>
         </div>
 
@@ -132,14 +116,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
         {errorMsg && (
           <div className="mb-4 p-3 rounded-xl bg-rose-50/80 dark:bg-rose-950/50 border border-rose-500/30 flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300 animate-fadeIn">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{errorMsg}</span>
+            <span className="font-medium">{errorMsg}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="mb-4 p-3 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/50 border border-indigo-500/30 flex items-start gap-2 text-xs text-indigo-700 dark:text-indigo-300 animate-fadeIn">
+          <div className="mb-4 p-3 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/50 border border-emerald-500/30 flex items-start gap-2 text-xs text-emerald-700 dark:text-emerald-300 animate-fadeIn">
             <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{successMsg}</span>
+            <span className="font-medium">{successMsg}</span>
           </div>
         )}
 
@@ -154,7 +138,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Alex Rivera"
+                  placeholder="Your Name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -163,49 +147,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
             </div>
           )}
 
-          {(mode === 'login' || mode === 'register' || mode === 'forgot' || mode === 'reset') && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="email"
-                  required
-                  placeholder="alex@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Email Address
+            </label>
+            <div className="relative">
+              <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="email"
+                required
+                placeholder="yourname@gmail.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
             </div>
-          )}
+          </div>
 
-          {mode === 'reset' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Reset Verification Code
-              </label>
-              <div className="relative">
-                <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  required
-                  placeholder="rst_xxxxxx"
-                  value={resetToken}
-                  onChange={(e) => setResetToken(e.target.value)}
-                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-            </div>
-          )}
-
-          {(mode === 'login' || mode === 'register' || mode === 'reset') && (
+          {mode !== 'forgot' && (
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  {mode === 'reset' ? 'New Password' : 'Password'}
+                  Password
                 </label>
                 {mode === 'login' && (
                   <button
@@ -239,46 +202,44 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-
-              {/* Password strength meter for register / reset */}
-              {(mode === 'register' || mode === 'reset') && password.length > 0 && (
-                <div className="mt-2 space-y-1 animate-fadeIn">
-                  <div className="flex gap-1 h-1.5 w-full">
-                    {[0, 1, 2, 3].map((idx) => (
-                      <div
-                        key={idx}
-                        className={`h-full flex-1 rounded-full transition-all ${
-                          strengthScore > idx ? strengthColors[strengthScore - 1] : 'bg-slate-200 dark:bg-slate-700'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-slate-400">
-                    <span>Password Strength:</span>
-                    <span className="font-semibold">{strengthLabels[strengthScore - 1] || 'Too weak'}</span>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
-          {(mode === 'register' || mode === 'reset') && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Confirm Password
-              </label>
-              <div className="relative">
-                <ShieldCheck className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  placeholder="••••••••"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+          {mode === 'register' && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <ShieldCheck className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
               </div>
-            </div>
+
+              {/* Password checks */}
+              <div className="p-2.5 rounded-xl glass-subcard text-[11px] space-y-1 text-slate-500 dark:text-slate-400">
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] ${hasMinLength ? 'bg-emerald-500 text-white' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                    <Check className="w-2 h-2" />
+                  </div>
+                  <span className={hasMinLength ? 'text-emerald-600 dark:text-emerald-400 font-medium' : ''}>Min 8 characters</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] ${hasLetters && hasNumbers ? 'bg-emerald-500 text-white' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                    <Check className="w-2 h-2" />
+                  </div>
+                  <span className={hasLetters && hasNumbers ? 'text-emerald-600 dark:text-emerald-400 font-medium' : ''}>Letters and numbers</span>
+                </div>
+              </div>
+            </>
           )}
 
           <button
@@ -294,7 +255,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
                   {mode === 'login' && 'Sign In'}
                   {mode === 'register' && 'Create Account'}
                   {mode === 'forgot' && 'Send Reset Link'}
-                  {mode === 'reset' && 'Update Password'}
                 </span>
                 <ArrowRight className="w-4 h-4" />
               </>
@@ -302,50 +262,59 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
           </button>
         </form>
 
-        {/* Demo Quick Mode */}
-        <div className="mt-4 pt-4 border-t border-white/50 dark:border-white/10 text-center">
-          <button
-            type="button"
-            onClick={handleQuickDemo}
-            className="w-full py-2 px-3 rounded-xl glass-subcard hover:border-indigo-400 text-slate-700 dark:text-slate-300 text-xs font-medium transition-colors cursor-pointer"
-          >
-            ✨ Continue as Alex Rivera (Demo Profile)
-          </button>
+        {/* Google sign-in */}
+        {(mode === 'login' || mode === 'register') && (
+          <div className="mt-4 pt-4 border-t border-white/50 dark:border-white/10">
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={loading}
+              className="w-full py-2.5 px-4 rounded-xl glass-subcard border border-white/40 dark:border-white/10 hover:border-indigo-400 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center justify-center gap-2.5 transition-all cursor-pointer"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span>Continue with Google</span>
+            </button>
 
-          <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-            {mode === 'login' ? (
-              <p>
-                Don't have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErrorMsg(null);
-                    setSuccessMsg(null);
-                    setMode('register');
-                  }}
-                  className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                >
-                  Create one
-                </button>
-              </p>
-            ) : (
-              <p>
-                Already have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErrorMsg(null);
-                    setSuccessMsg(null);
-                    setMode('login');
-                  }}
-                  className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                >
-                  Sign in
-                </button>
-              </p>
-            )}
+            <div className="mt-3 text-center text-xs text-slate-500 dark:text-slate-400">
+              {mode === 'login' ? (
+                <p>
+                  Don't have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMsg(null);
+                      setSuccessMsg(null);
+                      setMode('register');
+                    }}
+                    className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                  >
+                    Register
+                  </button>
+                </p>
+              ) : (
+                <p>
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMsg(null);
+                      setSuccessMsg(null);
+                      setMode('login');
+                    }}
+                    className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                  >
+                    Sign in
+                  </button>
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
