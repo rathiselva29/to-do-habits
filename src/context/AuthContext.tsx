@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserProfile, HabitCategory } from '../types';
-import { StorageService, DEFAULT_PROFILE } from '../services/storage';
+import { StorageService, DEFAULT_PROFILE, generateStarterHabitsForUser } from '../services/storage';
+import { FirestoreDataService } from '../services/firestoreData';
 import {
   auth,
   googleProvider,
@@ -26,6 +27,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
+  loginAsGuestDemo: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
@@ -99,6 +101,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   useEffect(() => {
+    // Check if local guest session was active
+    const localProfile = StorageService.getProfile();
+    if (localProfile && localProfile.id.startsWith('demo-guest-')) {
+      setUser(localProfile);
+      setIsLoading(false);
+      return;
+    }
+
     // Listen to genuine Firebase Auth state
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setIsLoading(true);
@@ -108,8 +118,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(profile);
       } else {
         setFirebaseUser(null);
-        setUser(null);
-        StorageService.resetAllData();
+        // Only reset user if not guest
+        const currentLocal = StorageService.getProfile();
+        if (!currentLocal?.id.startsWith('demo-guest-')) {
+          setUser(null);
+          StorageService.resetAllData();
+        }
       }
       setIsLoading(false);
     });
@@ -127,7 +141,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (err: any) {
       let message = 'Failed to sign in. Please check your credentials.';
       if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        message = 'Incorrect password for this email address. Please enter your authentic password or click "Forgot Password" to reset it.';
+        message = 'Incorrect password or email. Please check your credentials or click "Forgot Password".';
       } else if (err.code === 'auth/user-not-found') {
         message = 'No account found with this email. Please click "Create Account" to register.';
       } else if (err.code === 'auth/invalid-email') {
@@ -166,7 +180,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } else if (err.code === 'auth/invalid-email') {
         message = 'Please provide a valid email address.';
       } else if (err.code === 'auth/weak-password') {
-        message = 'Password is too weak. Please use at least 6-8 characters with numbers & letters.';
+        message = 'Password is too weak. Please use at least 8 characters with numbers & letters.';
       } else if (err.message) {
         message = err.message;
       }
@@ -195,6 +209,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const loginAsGuestDemo = async () => {
+    setIsLoading(true);
+    try {
+      const guestId = 'demo-guest-' + Math.random().toString(36).substring(2, 9);
+      const guestProfile: UserProfile = {
+        ...DEFAULT_PROFILE,
+        id: guestId,
+        name: 'Demo Explorer',
+        email: 'demo@todohabits.local',
+        isOnboarded: true,
+        selectedCategories: ['Fitness', 'Nutrition', 'Mental wellness', 'Productivity'],
+        goals: ['Build consistency', 'Improve health', 'Reduce stress'],
+        createdAt: new Date().toISOString(),
+      };
+      // Generate sample habits for immediate testing
+      const starterHabits = generateStarterHabitsForUser(guestProfile.selectedCategories, guestId);
+      StorageService.saveProfile(guestProfile);
+      StorageService.saveHabits(starterHabits);
+      setUser(guestProfile);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const forgotPassword = async (email: string) => {
     try {
       await sendPasswordResetEmail(auth, email.trim());
@@ -215,7 +253,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = async () => {
     setIsLoading(true);
     try {
-      await signOut(auth);
+      if (firebaseUser) {
+        await signOut(auth);
+      }
       setUser(null);
       setFirebaseUser(null);
       StorageService.resetAllData();
@@ -258,6 +298,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(updated);
     StorageService.saveProfile(updated);
 
+    // If user has no habits yet, initialize starter habits matching their selected focus areas
+    const currentHabits = StorageService.getHabits();
+    if (currentHabits.length === 0) {
+      const starters = generateStarterHabitsForUser(onboardingData.selectedCategories, user.id);
+      StorageService.saveHabits(starters);
+
+      if (firebaseUser) {
+        for (const h of starters) {
+          try {
+            await FirestoreDataService.saveHabit(h);
+          } catch (e) {
+            console.warn('Starter habit save note:', e);
+          }
+        }
+      }
+    }
+
     if (firebaseUser) {
       try {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
@@ -273,11 +330,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       value={{
         user,
         firebaseUser,
-        isAuthenticated: !!user && !!firebaseUser,
+        isAuthenticated: !!user,
         isLoading,
         login,
         register,
         loginWithGoogle,
+        loginAsGuestDemo,
         forgotPassword,
         logout,
         updateProfile,

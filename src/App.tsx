@@ -8,6 +8,7 @@ import { OfflineBanner } from './components/OfflineBanner';
 import { StreakCelebration } from './components/StreakCelebration';
 import { OnboardingModal } from './components/OnboardingModal';
 import { AuthModal } from './components/AuthModal';
+import { SplashView } from './components/SplashView';
 import { RootAuthView } from './components/RootAuthView';
 import { HabitCreatorModal } from './components/HabitCreatorModal';
 import { HabitDetailsModal } from './components/HabitDetailsModal';
@@ -23,13 +24,17 @@ import { Habit } from './types';
 import { Logo } from './components/Logo';
 
 function AppContent() {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, loginAsGuestDemo } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isNewHabitOpen, setIsNewHabitOpen] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [selectedHabitForDetails, setSelectedHabitForDetails] = useState<Habit | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  
+  // Unauthenticated screen state: Splash vs Login / Sign Up
+  const [showSplash, setShowSplash] = useState(true);
+  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register' | 'forgot'>('login');
 
   const handleOpenEditHabit = (habit: Habit) => {
     setEditingHabit(habit);
@@ -42,7 +47,7 @@ function AppContent() {
     setEditingHabit(null);
   };
 
-  // 1. Loading State
+  // 1. Loading State during authentication verification
   if (isLoading) {
     return (
       <div className="min-h-screen frosted-bg flex flex-col items-center justify-center p-4">
@@ -54,12 +59,34 @@ function AppContent() {
     );
   }
 
-  // 2. Unauthenticated Root View: Login / Sign Up Page
+  // 2. Unauthenticated Flow: Splash Screen & Login / Register View
   if (!isAuthenticated || !user) {
-    return <RootAuthView />;
+    if (showSplash) {
+      return (
+        <SplashView
+          onGetStarted={() => {
+            setAuthInitialMode('register');
+            setShowSplash(false);
+          }}
+          onSignIn={() => {
+            setAuthInitialMode('login');
+            setShowSplash(false);
+          }}
+          onQuickDemo={() => {
+            loginAsGuestDemo();
+          }}
+        />
+      );
+    }
+    return (
+      <RootAuthView
+        initialMode={authInitialMode}
+        onBackToSplash={() => setShowSplash(true)}
+      />
+    );
   }
 
-  // 3. Authenticated but First Time User: 3-Step Onboarding Flow
+  // 3. Authenticated but First Time User: 3-Step Guided Onboarding Flow
   if (!user.isOnboarded) {
     return (
       <div className="min-h-screen frosted-bg flex flex-col items-center justify-center p-4">

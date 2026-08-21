@@ -1,5 +1,6 @@
 import { 
   Habit, 
+  HabitCategory,
   HabitCompletion, 
   MoodEntry, 
   HealthMetric, 
@@ -60,6 +61,47 @@ export const DEFAULT_PROFILE: UserProfile = {
 };
 
 export const INITIAL_HABITS: Habit[] = [];
+
+export function generateStarterHabitsForUser(categories: HabitCategory[], userId: string): Habit[] {
+  const starterMap: Partial<Record<HabitCategory, Partial<Habit>>> = {
+    'Fitness': { name: 'Morning 20-Min Movement', icon: 'dumbbell', color: '#10b981', frequency: 'daily', goalTarget: 20, goalUnit: 'mins' },
+    'Nutrition': { name: 'Drink 2 Liters of Water', icon: 'droplet', color: '#06b6d4', frequency: 'daily', goalTarget: 2000, goalUnit: 'ml' },
+    'Mental wellness': { name: '10-Min Morning Mindfulness', icon: 'brain', color: '#8b5cf6', frequency: 'daily', goalTarget: 10, goalUnit: 'mins' },
+    'Productivity': { name: 'Deep Work Focus Block', icon: 'target', color: '#f59e0b', frequency: 'daily', goalTarget: 60, goalUnit: 'mins' },
+    'Learning': { name: 'Read 15 Pages of a Book', icon: 'book', color: '#ec4899', frequency: 'daily', goalTarget: 15, goalUnit: 'pages' },
+    'Sleep': { name: 'Wind Down & Sleep on Schedule', icon: 'moon', color: '#6366f1', frequency: 'daily', goalTarget: 1, goalUnit: 'session' },
+    'Self-care': { name: 'Evening Relax & Self-Care', icon: 'heart', color: '#14b8a6', frequency: 'daily', goalTarget: 1, goalUnit: 'session' },
+    'Relationships': { name: 'Connect with a Friend or Family', icon: 'users', color: '#3b82f6', frequency: 'daily', goalTarget: 1, goalUnit: 'check-in' },
+    'Finances': { name: 'Review Daily Budget & Expenses', icon: 'coins', color: '#10b981', frequency: 'daily', goalTarget: 1, goalUnit: 'check' },
+    'Personal growth': { name: 'Daily Wins & Journal Reflection', icon: 'trending-up', color: '#f97316', frequency: 'daily', goalTarget: 1, goalUnit: 'entry' },
+    'Other': { name: 'Daily Habit Routine', icon: 'star', color: '#6366f1', frequency: 'daily', goalTarget: 1, goalUnit: 'times' }
+  };
+
+  const selected = categories && categories.length > 0 ? categories.slice(0, 3) : (['Fitness', 'Nutrition', 'Mental wellness'] as HabitCategory[]);
+  return selected.map((cat, idx) => {
+    const template = starterMap[cat] || starterMap['Fitness'];
+    return {
+      id: `habit-starter-${idx}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+      userId,
+      name: template.name || 'Daily Routine',
+      category: cat,
+      icon: template.icon || 'star',
+      color: template.color || '#6366f1',
+      frequency: template.frequency || 'daily',
+      goalTarget: template.goalTarget || 1,
+      goalUnit: template.goalUnit || 'times',
+      difficulty: 'medium',
+      startDate: getTodayDateString(),
+      streak: 0,
+      bestStreak: 0,
+      totalCompletions: 0,
+      isArchived: false,
+      isPaused: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  });
+}
 
 export function generateInitialCompletions(): HabitCompletion[] {
   return [];
