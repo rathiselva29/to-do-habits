@@ -1,0 +1,6 @@
+{
+  "name": "To-Do-Habits",
+  "description": "A modern, mobile-first habit and routine tracking platform with smart habits, mood logging, health metrics, honest AI coaching, and secure authentication.",
+  "requestFramePermissions": ["notifications"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

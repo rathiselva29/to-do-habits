@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <!-- Tile 0,0 -->
+    <linearGradient id="g00" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#84d34e"/>
+      <stop offset="100%" stop-color="#6bb83b"/>
+    </linearGradient>
+    <!-- Tile 0,1 with check -->
+    <linearGradient id="g01" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#55c142"/>
+      <stop offset="100%" stop-color="#3fa02f"/>
+    </linearGradient>
+    <!-- Tile 0,2 with check -->
+    <linearGradient id="g02" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#50b840"/>
+      <stop offset="100%" stop-color="#3d9c2e"/>
+    </linearGradient>
+    <!-- Tile 1,0 with check -->
+    <linearGradient id="g10" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#99df5b"/>
+      <stop offset="100%" stop-color="#6ebf3e"/>
+    </linearGradient>
+    <!-- Tile 1,1 -->
+    <linearGradient id="g11" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#90da54"/>
+      <stop offset="100%" stop-color="#72c43e"/>
+    </linearGradient>
+    <!-- Tile 1,2 -->
+    <linearGradient id="g12" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4aa73a"/>
+      <stop offset="100%" stop-color="#388c2b"/>
+    </linearGradient>
+    <!-- Tile 2,0 -->
+    <linearGradient id="g20" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8fd853"/>
+      <stop offset="100%" stop-color="#6bbd3a"/>
+    </linearGradient>
+    <!-- Tile 2,1 -->
+    <linearGradient id="g21" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6ec040"/>
+      <stop offset="100%" stop-color="#529e2f"/>
+    </linearGradient>
+    <!-- Tile 2,2 -->
+    <linearGradient id="g22" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#429b34"/>
+      <stop offset="100%" stop-color="#2d7a22"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Row 0 -->
+  <rect x="6" y="6" width="32" height="32" rx="8" fill="url(#g00)"/>
+  
+  <rect x="44" y="6" width="32" height="32" rx="8" fill="url(#g01)"/>
+  <path d="M51 22 L57 28 L69 16" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="82" y="6" width="32" height="32" rx="8" fill="url(#g02)"/>
+  <path d="M89 22 L95 28 L107 16" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Row 1 -->
+  <rect x="6" y="44" width="32" height="32" rx="8" fill="url(#g10)"/>
+  <path d="M13 60 L19 66 L31 54" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="44" y="44" width="32" height="32" rx="8" fill="url(#g11)"/>
+
+  <rect x="82" y="44" width="32" height="32" rx="8" fill="url(#g12)"/>
+
+  <!-- Row 2 -->
+  <rect x="6" y="82" width="32" height="32" rx="8" fill="url(#g20)"/>
+
+  <rect x="44" y="82" width="32" height="32" rx="8" fill="url(#g21)"/>
+
+  <rect x="82" y="82" width="32" height="32" rx="8" fill="url(#g22)"/>
+</svg>
