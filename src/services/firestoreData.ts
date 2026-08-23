@@ -11,10 +11,29 @@ import {
 } from './firebase';
 import { Habit, HabitCompletion, MoodEntry, HealthMetric } from '../types';
 
+/**
+ * Sanitizes object by removing undefined keys so Firestore doesn't throw:
+ * "Unsupported field value: undefined"
+ */
+export function sanitizeForFirestore<T extends Record<string, any>>(obj: T): T {
+  if (!obj || typeof obj !== 'object') return obj;
+  const result: any = Array.isArray(obj) ? [] : {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val === undefined) continue;
+    if (val !== null && typeof val === 'object' && !(val instanceof Date)) {
+      result[key] = sanitizeForFirestore(val);
+    } else {
+      result[key] = val;
+    }
+  }
+  return result as T;
+}
+
 export const FirestoreDataService = {
   // Real-time listener for user habits
   subscribeHabits: (userId: string, onUpdate: (habits: Habit[]) => void) => {
     try {
+      if (!userId) return () => {};
       const habitsCol = collection(db, 'habits');
       const q = query(habitsCol, where('userId', '==', userId));
       return onSnapshot(q, (snapshot) => {
@@ -37,6 +56,7 @@ export const FirestoreDataService = {
   // Real-time listener for user completions
   subscribeCompletions: (userId: string, onUpdate: (completions: HabitCompletion[]) => void) => {
     try {
+      if (!userId) return () => {};
       const compCol = collection(db, 'completions');
       const q = query(compCol, where('userId', '==', userId));
       return onSnapshot(q, (snapshot) => {
@@ -57,6 +77,7 @@ export const FirestoreDataService = {
   // Real-time listener for user moods
   subscribeMoods: (userId: string, onUpdate: (moods: MoodEntry[]) => void) => {
     try {
+      if (!userId) return () => {};
       const moodsCol = collection(db, 'moods');
       const q = query(moodsCol, where('userId', '==', userId));
       return onSnapshot(q, (snapshot) => {
@@ -78,6 +99,7 @@ export const FirestoreDataService = {
   // Real-time listener for user health metrics
   subscribeHealthMetrics: (userId: string, onUpdate: (metrics: HealthMetric[]) => void) => {
     try {
+      if (!userId) return () => {};
       const metricsCol = collection(db, 'health_metrics');
       const q = query(metricsCol, where('userId', '==', userId));
       return onSnapshot(q, (snapshot) => {
@@ -99,8 +121,10 @@ export const FirestoreDataService = {
   // Save Habit
   saveHabit: async (habit: Habit) => {
     try {
+      if (!habit.id) return;
+      const clean = sanitizeForFirestore(habit);
       const docRef = doc(db, 'habits', habit.id);
-      await setDoc(docRef, habit, { merge: true });
+      await setDoc(docRef, clean, { merge: true });
     } catch (err) {
       console.warn('Error saving habit to Firestore:', err);
     }
@@ -109,6 +133,7 @@ export const FirestoreDataService = {
   // Delete Habit
   deleteHabit: async (habitId: string) => {
     try {
+      if (!habitId) return;
       const docRef = doc(db, 'habits', habitId);
       await deleteDoc(docRef);
     } catch (err) {
@@ -119,8 +144,10 @@ export const FirestoreDataService = {
   // Save Completion
   saveCompletion: async (completion: HabitCompletion) => {
     try {
+      if (!completion.id) return;
+      const clean = sanitizeForFirestore(completion);
       const docRef = doc(db, 'completions', completion.id);
-      await setDoc(docRef, completion, { merge: true });
+      await setDoc(docRef, clean, { merge: true });
     } catch (err) {
       console.warn('Error saving completion to Firestore:', err);
     }
@@ -129,6 +156,7 @@ export const FirestoreDataService = {
   // Delete Completion
   deleteCompletion: async (completionId: string) => {
     try {
+      if (!completionId) return;
       const docRef = doc(db, 'completions', completionId);
       await deleteDoc(docRef);
     } catch (err) {
@@ -139,8 +167,10 @@ export const FirestoreDataService = {
   // Save Mood
   saveMood: async (mood: MoodEntry) => {
     try {
+      if (!mood.id) return;
+      const clean = sanitizeForFirestore(mood);
       const docRef = doc(db, 'moods', mood.id);
-      await setDoc(docRef, mood, { merge: true });
+      await setDoc(docRef, clean, { merge: true });
     } catch (err) {
       console.warn('Error saving mood to Firestore:', err);
     }
@@ -149,8 +179,10 @@ export const FirestoreDataService = {
   // Save Health Metric
   saveHealthMetric: async (metric: HealthMetric) => {
     try {
+      if (!metric.id) return;
+      const clean = sanitizeForFirestore(metric);
       const docRef = doc(db, 'health_metrics', metric.id);
-      await setDoc(docRef, metric, { merge: true });
+      await setDoc(docRef, clean, { merge: true });
     } catch (err) {
       console.warn('Error saving health metric to Firestore:', err);
     }

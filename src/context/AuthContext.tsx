@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserProfile, HabitCategory } from '../types';
 import { StorageService, DEFAULT_PROFILE, generateStarterHabitsForUser } from '../services/storage';
-import { FirestoreDataService } from '../services/firestoreData';
+import { FirestoreDataService, sanitizeForFirestore } from '../services/firestoreData';
 import {
   auth,
   googleProvider,
@@ -60,9 +60,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           ...DEFAULT_PROFILE,
           ...data,
           id: fbUser.uid,
-          email: fbUser.email || data.email,
+          email: fbUser.email || data.email || '',
           name: data.name || fbUser.displayName || fallbackName || (fbUser.email ? fbUser.email.split('@')[0] : 'User'),
-          avatarUrl: fbUser.photoURL || data.avatarUrl,
+          avatarUrl: fbUser.photoURL || data.avatarUrl || '',
         };
         StorageService.saveProfile(fullProfile);
         return fullProfile;
@@ -73,11 +73,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           id: fbUser.uid,
           email: fbUser.email || '',
           name: fbUser.displayName || fallbackName || (fbUser.email ? fbUser.email.split('@')[0] : 'User'),
-          avatarUrl: fbUser.photoURL || undefined,
+          avatarUrl: fbUser.photoURL || '',
           isOnboarded: false, // Must complete onboarding
           createdAt: new Date().toISOString(),
         };
-        await setDoc(userDocRef, newProfile);
+        const sanitized = sanitizeForFirestore(newProfile);
+        await setDoc(userDocRef, sanitized);
         StorageService.saveProfile(newProfile);
         return newProfile;
       }
@@ -92,6 +93,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         id: fbUser.uid,
         email: fbUser.email || '',
         name: fbUser.displayName || fallbackName || (fbUser.email ? fbUser.email.split('@')[0] : 'User'),
+        avatarUrl: fbUser.photoURL || '',
         isOnboarded: false,
         createdAt: new Date().toISOString(),
       };
@@ -111,21 +113,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Listen to genuine Firebase Auth state
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      setIsLoading(true);
-      if (fbUser) {
-        setFirebaseUser(fbUser);
-        const profile = await syncUserDoc(fbUser);
-        setUser(profile);
-      } else {
-        setFirebaseUser(null);
-        // Only reset user if not guest
-        const currentLocal = StorageService.getProfile();
-        if (!currentLocal?.id.startsWith('demo-guest-')) {
-          setUser(null);
-          StorageService.resetAllData();
+      try {
+        if (fbUser) {
+          setFirebaseUser(fbUser);
+          const profile = await syncUserDoc(fbUser);
+          setUser(profile);
+        } else {
+          setFirebaseUser(null);
+          // Only reset user if not guest
+          const currentLocal = StorageService.getProfile();
+          if (!currentLocal?.id.startsWith('demo-guest-')) {
+            setUser(null);
+            StorageService.resetAllData();
+          }
         }
+      } catch (err) {
+        console.warn('Auth state sync note:', err);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     });
 
     return () => unsubscribe();
@@ -139,17 +145,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(profile);
       setFirebaseUser(cred.user);
     } catch (err: any) {
-      let message = 'Failed to sign in. Please check your credentials.';
-      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+      let message = 'Failed to sign in. Please verify your email and password.';
+      const code = err?.code || '';
+      if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
         message = 'Incorrect password or email. Please check your credentials or click "Forgot Password".';
-      } else if (err.code === 'auth/user-not-found') {
-        message = 'No account found with this email. Please click "Create Account" to register.';
-      } else if (err.code === 'auth/invalid-email') {
-        message = 'The email address is invalid. Please check the format.';
-      } else if (err.code === 'auth/user-disabled') {
-        message = 'This user account has been disabled.';
-      } else if (err.code === 'auth/too-many-requests') {
-        message = 'Too many failed login attempts. Please reset your password or try again later.';
+      } else if (code === 'auth/user-not-found') {
+        message = 'No account found with this email. Click "Create Account" above to register a new account.';
+      } else if (code === 'auth/invalid-email') {
+        message = 'The email address format is invalid. Please enter a valid email (e.g. name@example.com).';
+      } else if (code === 'auth/user-disabled') {
+        message = 'This user account has been disabled. Please contact support.';
+      } else if (code === 'auth/too-many-requests') {
+        message = 'Access temporarily disabled due to multiple failed login attempts. Please reset your password or try again in a few minutes.';
+      } else if (code === 'auth/network-request-failed') {
+        message = 'Network connection failed. Please check your internet connection and try again.';
       } else if (err.message) {
         message = err.message;
       }
@@ -175,12 +184,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setFirebaseUser(cred.user);
     } catch (err: any) {
       let message = 'Failed to register account.';
-      if (err.code === 'auth/email-already-in-use') {
-        message = 'An account already exists with this email address. Please sign in instead.';
-      } else if (err.code === 'auth/invalid-email') {
-        message = 'Please provide a valid email address.';
-      } else if (err.code === 'auth/weak-password') {
-        message = 'Password is too weak. Please use at least 8 characters with numbers & letters.';
+      const code = err?.code || '';
+      if (code === 'auth/email-already-in-use') {
+        message = 'An account already exists with this email address. Please switch to "Sign In" to access your account.';
+      } else if (code === 'auth/invalid-email') {
+        message = 'Please provide a valid email address (e.g. name@example.com).';
+      } else if (code === 'auth/weak-password') {
+        message = 'Password is too weak. Please use at least 8 characters including both letters and numbers.';
+      } else if (code === 'auth/operation-not-allowed') {
+        message = 'Email & Password registration is currently restricted in project settings.';
+      } else if (code === 'auth/network-request-failed') {
+        message = 'Network connection failed. Please check your connection and try again.';
       } else if (err.message) {
         message = err.message;
       }
@@ -198,12 +212,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(profile);
       setFirebaseUser(result.user);
     } catch (err: any) {
-      if (err.code === 'auth/popup-closed-by-user') {
-        throw new Error('Google Sign-In was cancelled.');
-      } else if (err.code === 'auth/cancelled-popup-request') {
-        throw new Error('Google Sign-In request cancelled.');
+      const code = err?.code || '';
+      if (code === 'auth/popup-closed-by-user') {
+        throw new Error('Google Sign-In was cancelled because the popup window was closed.');
+      } else if (code === 'auth/popup-blocked') {
+        throw new Error('Pop-up window was blocked by your browser. Please allow popups for this site, or sign in using Email & Password / Instant Quick Tour.');
+      } else if (code === 'auth/cancelled-popup-request') {
+        throw new Error('Google Sign-In request was cancelled.');
+      } else if (code === 'auth/unauthorized-domain') {
+        throw new Error('This preview domain is not in the Firebase authorized domain list. You can sign in using Email & Password or Instant Quick Tour.');
+      } else if (code === 'auth/operation-not-allowed') {
+        throw new Error('Google sign-in provider is not enabled in Firebase Console. Please sign in with Email & Password or Instant Quick Tour.');
+      } else if (code === 'auth/network-request-failed') {
+        throw new Error('Network error during Google Sign-In. Please check your internet connection.');
       }
-      throw new Error(err.message || 'Failed to sign in with Google.');
+      throw new Error(err.message || 'Google Sign-In could not be completed. You can also sign in with Email & Password.');
     } finally {
       setIsLoading(false);
     }
@@ -273,7 +296,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (firebaseUser) {
       try {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
-        await setDoc(userDocRef, updated, { merge: true });
+        const clean = sanitizeForFirestore(updated);
+        await setDoc(userDocRef, clean, { merge: true });
       } catch (err) {
         console.error('Error saving profile to Firestore:', err);
       }
@@ -318,7 +342,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (firebaseUser) {
       try {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
-        await setDoc(userDocRef, updated, { merge: true });
+        const clean = sanitizeForFirestore(updated);
+        await setDoc(userDocRef, clean, { merge: true });
       } catch (err) {
         console.error('Error completing onboarding in Firestore:', err);
       }
