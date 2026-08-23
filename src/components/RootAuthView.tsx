@@ -422,7 +422,7 @@ export const RootAuthView: React.FC<RootAuthViewProps> = ({
         {/* Security & Verification Notice */}
         <div className="text-center mt-6 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-          <span>Real-time Cloud Firestore Sync • Secure Firebase Authentication</span>
+          <span>Real-time Supabase Database Sync • Secure Supabase & Cloud Authentication</span>
         </div>
       </div>
     </div>

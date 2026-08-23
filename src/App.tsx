@@ -10,6 +10,7 @@ import { OnboardingModal } from './components/OnboardingModal';
 import { AuthModal } from './components/AuthModal';
 import { SplashView } from './components/SplashView';
 import { RootAuthView } from './components/RootAuthView';
+import { ResetPasswordView } from './components/ResetPasswordView';
 import { HabitCreatorModal } from './components/HabitCreatorModal';
 import { HabitDetailsModal } from './components/HabitDetailsModal';
 import { DashboardView } from './components/DashboardView';
@@ -24,7 +25,7 @@ import { Habit } from './types';
 import { Logo } from './components/Logo';
 
 function AppContent() {
-  const { user, isAuthenticated, isLoading, loginAsGuestDemo } = useAuth();
+  const { user, isAuthenticated, isLoading, isPasswordRecoveryMode, loginAsGuestDemo } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isNewHabitOpen, setIsNewHabitOpen] = useState(false);
@@ -57,6 +58,11 @@ function AppContent() {
         </div>
       </div>
     );
+  }
+
+  // 2. Password Recovery View when arriving from reset link
+  if (isPasswordRecoveryMode) {
+    return <ResetPasswordView />;
   }
 
   // 2. Unauthenticated Flow: Splash Screen & Login / Register View

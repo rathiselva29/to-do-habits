@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserProfile, HabitCategory } from '../types';
 import { StorageService, DEFAULT_PROFILE, generateStarterHabitsForUser } from '../services/storage';
+import { 
+  getSupabase, 
+  isSupabaseConfigured, 
+  validatePassword, 
+  validateEmail, 
+  formatSupabaseAuthError 
+} from '../services/supabase';
+import { SupabaseDataService } from '../services/supabaseData';
 import { FirestoreDataService, sanitizeForFirestore } from '../services/firestoreData';
 import {
   auth,
@@ -16,7 +24,7 @@ import {
   doc,
   getDoc,
   setDoc,
-  FirebaseUser
+  FirebaseUser,
 } from '../services/firebase';
 
 interface AuthContextType {
@@ -24,11 +32,15 @@ interface AuthContextType {
   firebaseUser: FirebaseUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isPasswordRecoveryMode: boolean;
+  authProviderType: 'supabase' | 'firebase' | 'demo';
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   loginAsGuestDemo: () => Promise<void>;
   forgotPassword: (email: string) => Promise<{ message: string }>;
+  updatePassword: (newPassword: string) => Promise<{ message: string }>;
+  cancelPasswordRecovery: () => void;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   completeOnboarding: (onboardingData: {
@@ -47,9 +59,50 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<UserProfile | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState<boolean>(false);
+  const [authProviderType, setAuthProviderType] = useState<'supabase' | 'firebase' | 'demo'>('supabase');
 
-  // Sync user document from Firestore or initialize
-  const syncUserDoc = async (fbUser: FirebaseUser, fallbackName?: string): Promise<UserProfile> => {
+  // Helper to sync or initialize Supabase profile
+  const syncSupabaseProfile = async (sbUser: any, fallbackName?: string): Promise<UserProfile> => {
+    try {
+      const existing = await SupabaseDataService.fetchProfile(sbUser.id);
+      if (existing) {
+        StorageService.saveProfile(existing);
+        return existing;
+      }
+
+      // Create new profile record in Supabase
+      const newProfile: UserProfile = {
+        ...DEFAULT_PROFILE,
+        id: sbUser.id,
+        email: sbUser.email || '',
+        name: sbUser.user_metadata?.name || fallbackName || (sbUser.email ? sbUser.email.split('@')[0] : 'User'),
+        avatarUrl: sbUser.user_metadata?.avatar_url || '',
+        isOnboarded: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      await SupabaseDataService.upsertProfile(newProfile);
+      StorageService.saveProfile(newProfile);
+      return newProfile;
+    } catch (err) {
+      console.warn('Supabase profile sync warning:', err);
+      const fallback: UserProfile = {
+        ...DEFAULT_PROFILE,
+        id: sbUser.id,
+        email: sbUser.email || '',
+        name: sbUser.user_metadata?.name || fallbackName || (sbUser.email ? sbUser.email.split('@')[0] : 'User'),
+        avatarUrl: sbUser.user_metadata?.avatar_url || '',
+        isOnboarded: false,
+        createdAt: new Date().toISOString(),
+      };
+      StorageService.saveProfile(fallback);
+      return fallback;
+    }
+  };
+
+  // Helper to sync or initialize Firebase profile (secondary fallback)
+  const syncFirebaseProfile = async (fbUser: FirebaseUser, fallbackName?: string): Promise<UserProfile> => {
     try {
       const userDocRef = doc(db, 'users', fbUser.uid);
       const docSnap = await getDoc(userDocRef);
@@ -67,14 +120,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         StorageService.saveProfile(fullProfile);
         return fullProfile;
       } else {
-        // Create initial profile in Firestore
         const newProfile: UserProfile = {
           ...DEFAULT_PROFILE,
           id: fbUser.uid,
           email: fbUser.email || '',
           name: fbUser.displayName || fallbackName || (fbUser.email ? fbUser.email.split('@')[0] : 'User'),
           avatarUrl: fbUser.photoURL || '',
-          isOnboarded: false, // Must complete onboarding
+          isOnboarded: false,
           createdAt: new Date().toISOString(),
         };
         const sanitized = sanitizeForFirestore(newProfile);
@@ -83,11 +135,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return newProfile;
       }
     } catch (err) {
-      console.warn('Firestore sync note, using local profile fallback:', err);
-      const local = StorageService.getProfile();
-      if (local && local.id === fbUser.uid) {
-        return local;
-      }
+      console.warn('Firebase profile sync fallback:', err);
       const fallback: UserProfile = {
         ...DEFAULT_PROFILE,
         id: fbUser.uid,
@@ -103,24 +151,93 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   useEffect(() => {
-    // Check if local guest session was active
+    // Check URL parameters for OAuth recovery / reset tokens
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    if (
+      hash.includes('type=recovery') || 
+      search.includes('type=recovery') || 
+      hash.includes('type=invite') ||
+      search.includes('reset=true')
+    ) {
+      setIsPasswordRecoveryMode(true);
+    }
+
+    const supabase = getSupabase();
+
+    // 1. SUPABASE AUTH FLOW (Priority)
+    if (supabase && isSupabaseConfigured) {
+      setAuthProviderType('supabase');
+
+      // Check current active session
+      supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+        try {
+          if (error) {
+            console.warn('Error fetching Supabase session:', error.message);
+          }
+          if (session?.user) {
+            const profile = await syncSupabaseProfile(session.user);
+            setUser(profile);
+          } else {
+            const local = StorageService.getProfile();
+            if (local && local.id.startsWith('demo-guest-')) {
+              setUser(local);
+              setAuthProviderType('demo');
+            } else {
+              setUser(null);
+            }
+          }
+        } catch (e) {
+          console.warn('Supabase session init note:', e);
+        } finally {
+          setIsLoading(false);
+        }
+      });
+
+      // Subscribe to Supabase Auth state transitions
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          if (event === 'PASSWORD_RECOVERY') {
+            setIsPasswordRecoveryMode(true);
+          }
+
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+            if (session?.user) {
+              const profile = await syncSupabaseProfile(session.user);
+              setUser(profile);
+            }
+          } else if (event === 'SIGNED_OUT') {
+            setUser(null);
+            StorageService.resetAllData();
+            setIsPasswordRecoveryMode(false);
+          }
+          setIsLoading(false);
+        }
+      );
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+
+    // 2. FIREBASE AUTH FLOW (Fallback when Supabase URL/key not supplied in environment)
+    setAuthProviderType('firebase');
     const localProfile = StorageService.getProfile();
     if (localProfile && localProfile.id.startsWith('demo-guest-')) {
       setUser(localProfile);
+      setAuthProviderType('demo');
       setIsLoading(false);
       return;
     }
 
-    // Listen to genuine Firebase Auth state
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       try {
         if (fbUser) {
           setFirebaseUser(fbUser);
-          const profile = await syncUserDoc(fbUser);
+          const profile = await syncFirebaseProfile(fbUser);
           setUser(profile);
         } else {
           setFirebaseUser(null);
-          // Only reset user if not guest
           const currentLocal = StorageService.getProfile();
           if (!currentLocal?.id.startsWith('demo-guest-')) {
             setUser(null);
@@ -128,7 +245,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         }
       } catch (err) {
-        console.warn('Auth state sync note:', err);
+        console.warn('Firebase auth state note:', err);
       } finally {
         setIsLoading(false);
       }
@@ -137,13 +254,51 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => unsubscribe();
   }, []);
 
+  // 1. Email + Password Sign In
   const login = async (email: string, password: string) => {
     setIsLoading(true);
+    const cleanEmail = email.trim();
+    if (!validateEmail(cleanEmail)) {
+      setIsLoading(false);
+      throw new Error('Please enter a valid email address (e.g. name@example.com).');
+    }
+    if (!password) {
+      setIsLoading(false);
+      throw new Error('Please enter your password.');
+    }
+
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+
+        if (error) {
+          throw new Error(formatSupabaseAuthError(error));
+        }
+
+        if (data.user) {
+          const profile = await syncSupabaseProfile(data.user);
+          setUser(profile);
+          setAuthProviderType('supabase');
+        }
+      } catch (err: any) {
+        throw new Error(err.message || 'Failed to sign in. Please verify your credentials.');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Firebase fallback
     try {
-      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-      const profile = await syncUserDoc(cred.user);
+      const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      const profile = await syncFirebaseProfile(cred.user);
       setUser(profile);
       setFirebaseUser(cred.user);
+      setAuthProviderType('firebase');
     } catch (err: any) {
       let message = 'Failed to sign in. Please verify your email and password.';
       const code = err?.code || '';
@@ -152,13 +307,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } else if (code === 'auth/user-not-found') {
         message = 'No account found with this email. Click "Create Account" above to register a new account.';
       } else if (code === 'auth/invalid-email') {
-        message = 'The email address format is invalid. Please enter a valid email (e.g. name@example.com).';
+        message = 'The email address format is invalid. Please enter a valid email.';
       } else if (code === 'auth/user-disabled') {
         message = 'This user account has been disabled. Please contact support.';
       } else if (code === 'auth/too-many-requests') {
-        message = 'Access temporarily disabled due to multiple failed login attempts. Please reset your password or try again in a few minutes.';
-      } else if (code === 'auth/network-request-failed') {
-        message = 'Network connection failed. Please check your internet connection and try again.';
+        message = 'Access temporarily disabled due to multiple failed login attempts. Please reset your password or try again later.';
       } else if (err.message) {
         message = err.message;
       }
@@ -168,33 +321,79 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // 2. Email + Password Registration
   const register = async (name: string, email: string, password: string) => {
     setIsLoading(true);
+    const cleanName = name.trim();
+    const cleanEmail = email.trim();
+
+    if (!cleanName) {
+      setIsLoading(false);
+      throw new Error('Please enter your full name.');
+    }
+    if (!validateEmail(cleanEmail)) {
+      setIsLoading(false);
+      throw new Error('Please enter a valid email address.');
+    }
+    const pwdCheck = validatePassword(password);
+    if (!pwdCheck.isValid) {
+      setIsLoading(false);
+      throw new Error(pwdCheck.message);
+    }
+
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password,
+          options: {
+            data: {
+              name: cleanName,
+            },
+          },
+        });
+
+        if (error) {
+          throw new Error(formatSupabaseAuthError(error));
+        }
+
+        if (data.user) {
+          const profile = await syncSupabaseProfile(data.user, cleanName);
+          setUser(profile);
+          setAuthProviderType('supabase');
+        }
+      } catch (err: any) {
+        throw new Error(err.message || 'Failed to register account.');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Firebase fallback
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      if (auth.currentUser && name.trim()) {
+      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      if (auth.currentUser && cleanName) {
         try {
-          await updateFirebaseProfile(auth.currentUser, { displayName: name.trim() });
+          await updateFirebaseProfile(auth.currentUser, { displayName: cleanName });
         } catch (e) {
-          console.warn('Profile name update note:', e);
+          console.warn('Profile display name update note:', e);
         }
       }
-      const profile = await syncUserDoc(cred.user, name.trim());
+      const profile = await syncFirebaseProfile(cred.user, cleanName);
       setUser(profile);
       setFirebaseUser(cred.user);
+      setAuthProviderType('firebase');
     } catch (err: any) {
       let message = 'Failed to register account.';
       const code = err?.code || '';
       if (code === 'auth/email-already-in-use') {
         message = 'An account already exists with this email address. Please switch to "Sign In" to access your account.';
       } else if (code === 'auth/invalid-email') {
-        message = 'Please provide a valid email address (e.g. name@example.com).';
+        message = 'Please provide a valid email address.';
       } else if (code === 'auth/weak-password') {
-        message = 'Password is too weak. Please use at least 8 characters including both letters and numbers.';
-      } else if (code === 'auth/operation-not-allowed') {
-        message = 'Email & Password registration is currently restricted in project settings.';
-      } else if (code === 'auth/network-request-failed') {
-        message = 'Network connection failed. Please check your connection and try again.';
+        message = 'Password is too weak. Please use at least 8 characters with letters and numbers.';
       } else if (err.message) {
         message = err.message;
       }
@@ -204,34 +403,58 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // 3. Continue with Google OAuth
   const loginWithGoogle = async () => {
     setIsLoading(true);
+    const supabase = getSupabase();
+
+    if (supabase && isSupabaseConfigured) {
+      try {
+        const redirectUrl = typeof window !== 'undefined' ? window.location.origin : '';
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            },
+          },
+        });
+
+        if (error) {
+          throw new Error(formatSupabaseAuthError(error));
+        }
+      } catch (err: any) {
+        setIsLoading(false);
+        throw new Error(err.message || 'Failed to initiate Google sign-in.');
+      }
+      return;
+    }
+
+    // Firebase Google Sign In fallback
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      const profile = await syncUserDoc(result.user);
+      const profile = await syncFirebaseProfile(result.user);
       setUser(profile);
       setFirebaseUser(result.user);
+      setAuthProviderType('firebase');
     } catch (err: any) {
       const code = err?.code || '';
       if (code === 'auth/popup-closed-by-user') {
         throw new Error('Google Sign-In was cancelled because the popup window was closed.');
       } else if (code === 'auth/popup-blocked') {
-        throw new Error('Pop-up window was blocked by your browser. Please allow popups for this site, or sign in using Email & Password / Instant Quick Tour.');
+        throw new Error('Pop-up was blocked by your browser. Please allow popups or sign in with Email & Password.');
       } else if (code === 'auth/cancelled-popup-request') {
         throw new Error('Google Sign-In request was cancelled.');
-      } else if (code === 'auth/unauthorized-domain') {
-        throw new Error('This preview domain is not in the Firebase authorized domain list. You can sign in using Email & Password or Instant Quick Tour.');
-      } else if (code === 'auth/operation-not-allowed') {
-        throw new Error('Google sign-in provider is not enabled in Firebase Console. Please sign in with Email & Password or Instant Quick Tour.');
-      } else if (code === 'auth/network-request-failed') {
-        throw new Error('Network error during Google Sign-In. Please check your internet connection.');
       }
-      throw new Error(err.message || 'Google Sign-In could not be completed. You can also sign in with Email & Password.');
+      throw new Error(err.message || 'Google Sign-In could not be completed.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // 4. Instant Quick Tour (Demo Explorer)
   const loginAsGuestDemo = async () => {
     setIsLoading(true);
     try {
@@ -246,26 +469,53 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         goals: ['Build consistency', 'Improve health', 'Reduce stress'],
         createdAt: new Date().toISOString(),
       };
-      // Generate sample habits for immediate testing
       const starterHabits = generateStarterHabitsForUser(guestProfile.selectedCategories, guestId);
       StorageService.saveProfile(guestProfile);
       StorageService.saveHabits(starterHabits);
       setUser(guestProfile);
+      setAuthProviderType('demo');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // 5. Real Forgot Password
   const forgotPassword = async (email: string) => {
+    const cleanEmail = email.trim();
+    if (!validateEmail(cleanEmail)) {
+      throw new Error('Please enter a valid email address.');
+    }
+
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      try {
+        const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/#type=recovery` : '';
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: redirectUrl,
+        });
+
+        if (error) {
+          throw new Error(formatSupabaseAuthError(error));
+        }
+
+        return {
+          message: `A password reset link has been dispatched to ${cleanEmail}. Please check your inbox to update your password.`,
+        };
+      } catch (err: any) {
+        throw new Error(err.message || 'Failed to send password reset email.');
+      }
+    }
+
+    // Firebase fallback
     try {
-      await sendPasswordResetEmail(auth, email.trim());
-      return { message: `A password reset link has been dispatched to ${email.trim()}. Please check your inbox and follow the instructions.` };
+      await sendPasswordResetEmail(auth, cleanEmail);
+      return {
+        message: `A password reset link has been dispatched to ${cleanEmail}. Please check your inbox and follow the instructions.`,
+      };
     } catch (err: any) {
       let message = 'Failed to send password reset email.';
       if (err.code === 'auth/user-not-found') {
         message = 'No registered account found with this email address.';
-      } else if (err.code === 'auth/invalid-email') {
-        message = 'Please enter a valid email address.';
       } else if (err.message) {
         message = err.message;
       }
@@ -273,25 +523,74 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // 6. Real Password Update (when arriving from reset email)
+  const updatePassword = async (newPassword: string) => {
+    const pwdCheck = validatePassword(newPassword);
+    if (!pwdCheck.isValid) {
+      throw new Error(pwdCheck.message);
+    }
+
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      try {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) {
+          throw new Error(formatSupabaseAuthError(error));
+        }
+        setIsPasswordRecoveryMode(false);
+        // Clear hash from URL
+        if (typeof window !== 'undefined' && window.history) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+        return { message: 'Password updated successfully! You can now use your new password.' };
+      } catch (err: any) {
+        throw new Error(err.message || 'Failed to update password.');
+      }
+    }
+
+    setIsPasswordRecoveryMode(false);
+    return { message: 'Password updated successfully.' };
+  };
+
+  const cancelPasswordRecovery = () => {
+    setIsPasswordRecoveryMode(false);
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  };
+
+  // 7. Logout
   const logout = async () => {
     setIsLoading(true);
     try {
+      const supabase = getSupabase();
+      if (supabase && isSupabaseConfigured) {
+        await supabase.auth.signOut();
+      }
       if (firebaseUser) {
         await signOut(auth);
       }
       setUser(null);
       setFirebaseUser(null);
+      setIsPasswordRecoveryMode(false);
       StorageService.resetAllData();
     } finally {
       setIsLoading(false);
     }
   };
 
+  // 8. Update Profile
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!user) return;
     const updated = { ...user, ...updates };
     setUser(updated);
     StorageService.saveProfile(updated);
+
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      await SupabaseDataService.upsertProfile(updated);
+      return;
+    }
 
     if (firebaseUser) {
       try {
@@ -304,6 +603,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // 9. Complete Onboarding
   const completeOnboarding = async (onboardingData: {
     name?: string;
     selectedCategories: HabitCategory[];
@@ -322,24 +622,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(updated);
     StorageService.saveProfile(updated);
 
-    // If user has no habits yet, initialize starter habits matching their selected focus areas
+    // If new user has 0 habits, generate initial focus habits tailored to their chosen categories
     const currentHabits = StorageService.getHabits();
     if (currentHabits.length === 0) {
       const starters = generateStarterHabitsForUser(onboardingData.selectedCategories, user.id);
       StorageService.saveHabits(starters);
 
-      if (firebaseUser) {
+      const supabase = getSupabase();
+      if (supabase && isSupabaseConfigured) {
         for (const h of starters) {
-          try {
-            await FirestoreDataService.saveHabit(h);
-          } catch (e) {
-            console.warn('Starter habit save note:', e);
-          }
+          await SupabaseDataService.saveHabit(h);
+        }
+      } else if (firebaseUser) {
+        for (const h of starters) {
+          await FirestoreDataService.saveHabit(h);
         }
       }
     }
 
-    if (firebaseUser) {
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      await SupabaseDataService.upsertProfile(updated);
+    } else if (firebaseUser) {
       try {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         const clean = sanitizeForFirestore(updated);
@@ -357,11 +661,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         firebaseUser,
         isAuthenticated: !!user,
         isLoading,
+        isPasswordRecoveryMode,
+        authProviderType,
         login,
         register,
         loginWithGoogle,
         loginAsGuestDemo,
         forgotPassword,
+        updatePassword,
+        cancelPasswordRecovery,
         logout,
         updateProfile,
         completeOnboarding,

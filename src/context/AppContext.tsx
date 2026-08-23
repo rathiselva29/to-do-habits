@@ -17,7 +17,9 @@ import {
   calculateWellnessScore 
 } from '../services/storage';
 import { ApiService } from '../services/api';
+import { SupabaseDataService } from '../services/supabaseData';
 import { FirestoreDataService } from '../services/firestoreData';
+import { getSupabase, isSupabaseConfigured } from '../services/supabase';
 import { useAuth } from './AuthContext';
 import confetti from 'canvas-confetti';
 
@@ -79,21 +81,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [theme, setThemeState] = useState<'light' | 'dark'>('light');
   const [celebrationEvent, setCelebrationEvent] = useState<{ type: 'streak' | 'all_done'; streakCount?: number } | null>(null);
 
-  // Initialize data from local durable storage initially
+  // Load user data whenever authenticated user changes
   useEffect(() => {
-    const loadedHabits = StorageService.getHabits();
-    const loadedCompletions = StorageService.getCompletions();
-    const loadedMoods = StorageService.getMoods();
-    const loadedMetrics = StorageService.getHealthMetrics();
-    const loadedMsgs = StorageService.getAIMessages();
-    const loadedInsight = StorageService.getAIInsight();
-    const loadedQueue = StorageService.getSyncQueue();
+    if (!user?.id) {
+      // Unauthenticated: clear data
+      setHabits([]);
+      setCompletions([]);
+      setMoodEntries([]);
+      setHealthMetrics([]);
+      return;
+    }
 
-    // Recalculate streaks
-    const updatedHabits = loadedHabits.map(h => {
-      const stats = calculateHabitStreaks(h.id, loadedCompletions);
+    const currentUserId = user.id;
+
+    // Load from local storage initially
+    const localHabits = StorageService.getHabits().filter(h => h.userId === currentUserId || !h.userId);
+    const localCompletions = StorageService.getCompletions().filter(c => c.userId === currentUserId || !c.userId);
+    const localMoods = StorageService.getMoods().filter(m => m.userId === currentUserId || !m.userId);
+    const localMetrics = StorageService.getHealthMetrics().filter(hm => hm.userId === currentUserId || !hm.userId);
+
+    const updatedHabits = localHabits.map(h => {
+      const stats = calculateHabitStreaks(h.id, localCompletions);
       return {
         ...h,
+        userId: currentUserId,
         streak: stats.currentStreak,
         bestStreak: stats.bestStreak,
         totalCompletions: stats.totalCompletions,
@@ -101,14 +112,118 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
 
     setHabits(updatedHabits);
-    setCompletions(loadedCompletions);
-    setMoodEntries(loadedMoods);
-    setHealthMetrics(loadedMetrics);
-    setAiMessages(loadedMsgs);
-    setAiInsight(loadedInsight);
-    setSyncQueue(loadedQueue);
+    setCompletions(localCompletions);
+    setMoodEntries(localMoods);
+    setHealthMetrics(localMetrics);
+    setAiMessages(StorageService.getAIMessages());
+    setAiInsight(StorageService.getAIInsight());
+    setSyncQueue(StorageService.getSyncQueue());
 
-    // Initial theme
+    // 1. SUPABASE DATA FETCH & REALTIME SUBSCRIPTION
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      Promise.all([
+        SupabaseDataService.fetchHabits(currentUserId),
+        SupabaseDataService.fetchCompletions(currentUserId),
+        SupabaseDataService.fetchMoods(currentUserId),
+        SupabaseDataService.fetchHealthMetrics(currentUserId),
+      ]).then(([remoteHabits, remoteComps, remoteMoods, remoteMetrics]) => {
+        if (remoteHabits.length > 0 || remoteComps.length > 0) {
+          const recalculated = remoteHabits.map(h => {
+            const stats = calculateHabitStreaks(h.id, remoteComps);
+            return {
+              ...h,
+              streak: stats.currentStreak,
+              bestStreak: stats.bestStreak,
+              totalCompletions: stats.totalCompletions,
+            };
+          });
+          setHabits(recalculated);
+          StorageService.saveHabits(recalculated);
+          setCompletions(remoteComps);
+          StorageService.saveCompletions(remoteComps);
+        }
+        if (remoteMoods.length > 0) {
+          setMoodEntries(remoteMoods);
+          StorageService.saveMoods(remoteMoods);
+        }
+        if (remoteMetrics.length > 0) {
+          setHealthMetrics(remoteMetrics);
+          StorageService.saveHealthMetrics(remoteMetrics);
+        }
+      });
+
+      const unsubSupabase = SupabaseDataService.subscribeUserChanges(currentUserId, async () => {
+        const [rHabits, rComps, rMoods, rMetrics] = await Promise.all([
+          SupabaseDataService.fetchHabits(currentUserId),
+          SupabaseDataService.fetchCompletions(currentUserId),
+          SupabaseDataService.fetchMoods(currentUserId),
+          SupabaseDataService.fetchHealthMetrics(currentUserId),
+        ]);
+        if (rHabits.length > 0) {
+          setHabits(rHabits);
+          StorageService.saveHabits(rHabits);
+        }
+        if (rComps.length > 0) {
+          setCompletions(rComps);
+          StorageService.saveCompletions(rComps);
+        }
+        if (rMoods.length > 0) {
+          setMoodEntries(rMoods);
+          StorageService.saveMoods(rMoods);
+        }
+        if (rMetrics.length > 0) {
+          setHealthMetrics(rMetrics);
+          StorageService.saveHealthMetrics(rMetrics);
+        }
+      });
+
+      return () => {
+        unsubSupabase();
+      };
+    }
+
+    // 2. FIREBASE REALTIME SUBSCRIPTION FALLBACK
+    if (firebaseUser?.uid) {
+      const unsubHabits = FirestoreDataService.subscribeHabits(currentUserId, (remoteHabits) => {
+        if (remoteHabits.length > 0) {
+          setHabits(remoteHabits);
+          StorageService.saveHabits(remoteHabits);
+        }
+      });
+
+      const unsubCompletions = FirestoreDataService.subscribeCompletions(currentUserId, (remoteComps) => {
+        if (remoteComps.length > 0) {
+          setCompletions(remoteComps);
+          StorageService.saveCompletions(remoteComps);
+        }
+      });
+
+      const unsubMoods = FirestoreDataService.subscribeMoods(currentUserId, (remoteMoods) => {
+        if (remoteMoods.length > 0) {
+          setMoodEntries(remoteMoods);
+          StorageService.saveMoods(remoteMoods);
+        }
+      });
+
+      const unsubMetrics = FirestoreDataService.subscribeHealthMetrics(currentUserId, (remoteMetrics) => {
+        if (remoteMetrics.length > 0) {
+          setHealthMetrics(remoteMetrics);
+          StorageService.saveHealthMetrics(remoteMetrics);
+        }
+      });
+
+      return () => {
+        unsubHabits();
+        unsubCompletions();
+        unsubMoods();
+        unsubMetrics();
+      };
+    }
+  }, [user?.id, firebaseUser?.uid]);
+
+  // Initial theme initialization
+  useEffect(() => {
     const savedTheme = localStorage.getItem('aura_theme') as 'light' | 'dark' | null;
     if (savedTheme) {
       setThemeState(savedTheme);
@@ -118,48 +233,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       document.documentElement.classList.add('dark');
     }
   }, []);
-
-  // Real-time Firestore Subscriptions when user is logged in
-  useEffect(() => {
-    if (!firebaseUser?.uid) return;
-
-    const currentUserId = firebaseUser.uid;
-
-    const unsubHabits = FirestoreDataService.subscribeHabits(currentUserId, (remoteHabits) => {
-      if (remoteHabits.length > 0) {
-        setHabits(remoteHabits);
-        StorageService.saveHabits(remoteHabits);
-      }
-    });
-
-    const unsubCompletions = FirestoreDataService.subscribeCompletions(currentUserId, (remoteComps) => {
-      if (remoteComps.length > 0) {
-        setCompletions(remoteComps);
-        StorageService.saveCompletions(remoteComps);
-      }
-    });
-
-    const unsubMoods = FirestoreDataService.subscribeMoods(currentUserId, (remoteMoods) => {
-      if (remoteMoods.length > 0) {
-        setMoodEntries(remoteMoods);
-        StorageService.saveMoods(remoteMoods);
-      }
-    });
-
-    const unsubMetrics = FirestoreDataService.subscribeHealthMetrics(currentUserId, (remoteMetrics) => {
-      if (remoteMetrics.length > 0) {
-        setHealthMetrics(remoteMetrics);
-        StorageService.saveHealthMetrics(remoteMetrics);
-      }
-    });
-
-    return () => {
-      unsubHabits();
-      unsubCompletions();
-      unsubMoods();
-      unsubMetrics();
-    };
-  }, [firebaseUser?.uid]);
 
   // Online / Offline Listeners
   useEffect(() => {
@@ -216,8 +289,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, []);
 
-  // Toggle habit completion for a specific date (defaults to today)
+  // Toggle habit completion for a specific date
   const toggleHabitCompletion = (habitId: string, dateStr: string = getTodayDateString()) => {
+    if (!user?.id) return;
+    const currentUserId = user.id;
+
     const existingIndex = completions.findIndex(c => c.habitId === habitId && c.date === dateStr);
     let newCompletions: HabitCompletion[] = [];
     let isCompletedNow = false;
@@ -232,7 +308,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         payload: { habitId, date: dateStr },
       });
       if (existingComp?.id) {
-        FirestoreDataService.deleteCompletion(existingComp.id);
+        const supabase = getSupabase();
+        if (supabase && isSupabaseConfigured) {
+          SupabaseDataService.deleteCompletion(existingComp.id, currentUserId);
+        } else {
+          FirestoreDataService.deleteCompletion(existingComp.id);
+        }
       }
     } else {
       // Complete
@@ -241,7 +322,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const newCompletion: HabitCompletion = {
         id: `comp-${habitId}-${dateStr}-${Date.now()}`,
         habitId,
-        userId: user?.id || firebaseUser?.uid || 'user-1',
+        userId: currentUserId,
         date: dateStr,
         completedAt: new Date().toISOString(),
         value: targetHabit?.goalTarget || 1,
@@ -252,7 +333,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         action: 'create',
         payload: newCompletion,
       });
-      FirestoreDataService.saveCompletion(newCompletion);
+
+      const supabase = getSupabase();
+      if (supabase && isSupabaseConfigured) {
+        SupabaseDataService.saveCompletion(newCompletion);
+      } else {
+        FirestoreDataService.saveCompletion(newCompletion);
+      }
 
       triggerConfetti();
     }
@@ -260,21 +347,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     StorageService.saveCompletions(newCompletions);
     setCompletions(newCompletions);
 
-    // Update habit streak stats
+    // Recalculate habit streak stats
     const updatedHabits = habits.map(h => {
       if (h.id === habitId) {
         const stats = calculateHabitStreaks(h.id, newCompletions);
         if (isCompletedNow && stats.currentStreak > 0 && stats.currentStreak % 5 === 0) {
           setCelebrationEvent({ type: 'streak', streakCount: stats.currentStreak });
         }
-        const updatedHabitItem = {
+        const updatedHabitItem: Habit = {
           ...h,
           streak: stats.currentStreak,
           bestStreak: stats.bestStreak,
           totalCompletions: stats.totalCompletions,
           updatedAt: new Date().toISOString(),
         };
-        FirestoreDataService.saveHabit(updatedHabitItem);
+
+        const supabase = getSupabase();
+        if (supabase && isSupabaseConfigured) {
+          SupabaseDataService.saveHabit(updatedHabitItem);
+        } else {
+          FirestoreDataService.saveHabit(updatedHabitItem);
+        }
         return updatedHabitItem;
       }
       return h;
@@ -292,11 +385,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const createHabit = (newHabitData: Omit<Habit, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'streak' | 'bestStreak' | 'totalCompletions'>) => {
+    if (!user?.id) return;
+    const currentUserId = user.id;
     const habitId = 'habit-' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
     const newHabit: Habit = {
       ...newHabitData,
       id: habitId,
-      userId: user?.id || firebaseUser?.uid || 'user-1',
+      userId: currentUserId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       streak: 0,
@@ -307,7 +402,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = [newHabit, ...habits];
     StorageService.saveHabits(updated);
     setHabits(updated);
-    FirestoreDataService.saveHabit(newHabit);
+
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      SupabaseDataService.saveHabit(newHabit);
+    } else {
+      FirestoreDataService.saveHabit(newHabit);
+    }
+
     StorageService.addToSyncQueue({
       entity: 'habit',
       action: 'create',
@@ -316,10 +418,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateHabit = (id: string, updates: Partial<Habit>) => {
+    if (!user?.id) return;
     const updated = habits.map(h => {
       if (h.id === id) {
         const item = { ...h, ...updates, updatedAt: new Date().toISOString() };
-        FirestoreDataService.saveHabit(item);
+        const supabase = getSupabase();
+        if (supabase && isSupabaseConfigured) {
+          SupabaseDataService.saveHabit(item);
+        } else {
+          FirestoreDataService.saveHabit(item);
+        }
         return item;
       }
       return h;
@@ -334,13 +442,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const deleteHabit = (id: string) => {
+    if (!user?.id) return;
+    const currentUserId = user.id;
     const updated = habits.filter(h => h.id !== id);
     const updatedCompletions = completions.filter(c => c.habitId !== id);
     StorageService.saveHabits(updated);
     StorageService.saveCompletions(updatedCompletions);
     setHabits(updated);
     setCompletions(updatedCompletions);
-    FirestoreDataService.deleteHabit(id);
+
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      SupabaseDataService.deleteHabit(id, currentUserId);
+    } else {
+      FirestoreDataService.deleteHabit(id);
+    }
+
     StorageService.addToSyncQueue({
       entity: 'habit',
       action: 'delete',
@@ -362,9 +479,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Log Mood Entry
   const logMood = (score: 1 | 2 | 3 | 4 | 5, emotions: any[], notes?: string, dateStr: string = getTodayDateString()) => {
+    if (!user?.id) return;
+    const currentUserId = user.id;
     const newEntry: MoodEntry = {
       id: `mood-${dateStr}-${Date.now()}`,
-      userId: user?.id || firebaseUser?.uid || 'user-1',
+      userId: currentUserId,
       date: dateStr,
       timestamp: new Date().toISOString(),
       score,
@@ -375,7 +494,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = [newEntry, ...filtered];
     StorageService.saveMoods(updated);
     setMoodEntries(updated);
-    FirestoreDataService.saveMood(newEntry);
+
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      SupabaseDataService.saveMood(newEntry);
+    } else {
+      FirestoreDataService.saveMood(newEntry);
+    }
+
     StorageService.addToSyncQueue({
       entity: 'mood',
       action: 'create',
@@ -385,6 +511,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Log Health Metric
   const logHealthMetric = (metricUpdates: Partial<HealthMetric>, dateStr: string = getTodayDateString()) => {
+    if (!user?.id) return;
+    const currentUserId = user.id;
     const existingIndex = healthMetrics.findIndex(m => m.date === dateStr);
     let updated: HealthMetric[];
     let targetMetric: HealthMetric;
@@ -400,31 +528,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updated[existingIndex] = targetMetric;
     } else {
       targetMetric = {
-        id: `metric-${dateStr}-${Date.now()}`,
-        userId: user?.id || firebaseUser?.uid || 'user-1',
+        id: `health-${dateStr}-${Date.now()}`,
+        userId: currentUserId,
         date: dateStr,
-        updatedAt: new Date().toISOString(),
         ...metricUpdates,
+        updatedAt: new Date().toISOString(),
       };
       updated = [targetMetric, ...healthMetrics];
     }
 
     StorageService.saveHealthMetrics(updated);
     setHealthMetrics(updated);
-    FirestoreDataService.saveHealthMetric(targetMetric);
+
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      SupabaseDataService.saveHealthMetric(targetMetric);
+    } else {
+      FirestoreDataService.saveHealthMetric(targetMetric);
+    }
+
     StorageService.addToSyncQueue({
       entity: 'metric',
-      action: 'update',
-      payload: { date: dateStr, metricUpdates },
+      action: 'create',
+      payload: targetMetric,
     });
   };
 
-  // AI Coach Chat
+  // AI Coach Interactions
   const sendAIChatMessage = async (text: string) => {
+    if (!text.trim()) return;
     const userMsg: AICoachMessage = {
       id: 'msg-' + Date.now(),
       sender: 'user',
-      text,
+      text: text.trim(),
       timestamp: new Date().toISOString(),
     };
 
@@ -433,44 +569,86 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     StorageService.saveAIMessages(newMessages);
 
     try {
+      const activeUser = user || StorageService.getProfile() || {
+        id: 'user-1',
+        email: 'user@example.com',
+        name: 'User',
+        selectedCategories: ['Fitness', 'Nutrition', 'Mental wellness', 'Productivity'],
+        goals: ['Build consistency'],
+        reminderTimePreference: '08:00',
+        wakeTime: '07:00',
+        sleepTime: '23:00',
+        isOnboarded: true,
+        theme: 'light' as const,
+        units: 'metric' as const,
+        createdAt: new Date().toISOString(),
+      };
+
       const response = await ApiService.askAICoach({
         messages: newMessages,
-        userProfile: user || StorageService.getProfile(),
+        userProfile: activeUser,
         habits,
         completions,
         moodEntries,
         healthMetrics,
       });
 
-      const assistantMsg: AICoachMessage = {
-        id: 'msg-' + (Date.now() + 1),
+      const coachMsg: AICoachMessage = {
+        id: 'msg-reply-' + Date.now(),
         sender: 'assistant',
         text: response.reply,
-        timestamp: new Date().toISOString(),
         suggestions: response.suggestions,
+        timestamp: new Date().toISOString(),
       };
 
-      const finalMessages = [...newMessages, assistantMsg];
+      const finalMessages = [...newMessages, coachMsg];
       setAiMessages(finalMessages);
       StorageService.saveAIMessages(finalMessages);
     } catch (e) {
-      console.error('AI chat failed', e);
+      console.warn('AI reply generation warning:', e);
+      const fallbackMsg: AICoachMessage = {
+        id: 'msg-fallback-' + Date.now(),
+        sender: 'assistant',
+        text: "I'm focusing on your daily habits right now. Consistency is key: keep ticking off your daily routines!",
+        timestamp: new Date().toISOString(),
+      };
+      const finalFallback = [...newMessages, fallbackMsg];
+      setAiMessages(finalFallback);
+      StorageService.saveAIMessages(finalFallback);
     }
   };
 
   const refreshAIInsights = async () => {
     try {
-      const res = await ApiService.getAIInsights({
-        userProfile: user || StorageService.getProfile(),
+      const activeUser = user || StorageService.getProfile() || {
+        id: 'user-1',
+        email: 'user@example.com',
+        name: 'User',
+        selectedCategories: ['Fitness', 'Nutrition', 'Mental wellness', 'Productivity'],
+        goals: ['Build consistency'],
+        reminderTimePreference: '08:00',
+        wakeTime: '07:00',
+        sleepTime: '23:00',
+        isOnboarded: true,
+        theme: 'light' as const,
+        units: 'metric' as const,
+        createdAt: new Date().toISOString(),
+      };
+
+      const response = await ApiService.getAIInsights({
+        userProfile: activeUser,
         habits,
         completions,
         moodEntries,
         healthMetrics,
       });
-      setAiInsight(res.insight);
-      StorageService.saveAIInsight(res.insight);
+
+      if (response?.insight) {
+        setAiInsight(response.insight);
+        StorageService.saveAIInsight(response.insight);
+      }
     } catch (e) {
-      console.error('Failed to refresh AI insights', e);
+      console.warn('Insight refresh note:', e);
     }
   };
 
@@ -479,17 +657,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAiMessages([]);
   };
 
-  const updateNotificationSettings = (updates: Partial<NotificationSettings>) => {
-    const updated = { ...notificationSettings, ...updates };
-    StorageService.saveNotificationSettings(updated);
+  const updateNotificationSettings = (newSettings: Partial<NotificationSettings>) => {
+    const updated = { ...notificationSettings, ...newSettings };
     setNotificationSettings(updated);
+    StorageService.saveNotificationSettings(updated);
   };
 
   const clearCelebration = () => {
     setCelebrationEvent(null);
   };
 
-  // Compute live wellness score
   const wellnessScore = calculateWellnessScore(habits, completions, moodEntries, healthMetrics);
 
   return (
