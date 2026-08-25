@@ -26,19 +26,24 @@ import { useAuth } from '../context/AuthContext';
 import { IconRenderer } from './IconRenderer';
 import { getTodayDateString } from '../services/storage';
 import { formatTimeTo12Hour } from '../utils/timeFormat';
+import { User, Users } from 'lucide-react';
 
 interface DashboardViewProps {
   onOpenNewHabit: () => void;
   onOpenHabitDetails: (habit: Habit) => void;
   setActiveTab: (tab: string) => void;
+  onOpenAddProfile?: () => void;
+  onOpenProfileSwitcher?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenNewHabit,
   onOpenHabitDetails,
   setActiveTab,
+  onOpenAddProfile,
+  onOpenProfileSwitcher,
 }) => {
-  const { user } = useAuth();
+  const { user, profiles } = useAuth();
   const { 
     habits, 
     completions, 
@@ -212,23 +217,47 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white truncate">
                   {user?.name || 'Habit Builder'}
                 </h3>
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[10px] font-extrabold uppercase">
                   <Award className="w-3 h-3" />
-                  <span>Consistency Master</span>
+                  <span>Tracking Active (0+)</span>
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">
                 {user?.bio || 'Building everyday consistency, health, and focus.'}
               </p>
+
+              {/* Multi-Profile Quick Switching Row */}
+              <div className="flex items-center gap-2 mt-2 pt-1">
+                {onOpenProfileSwitcher && (
+                  <button
+                    type="button"
+                    onClick={onOpenProfileSwitcher}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/70 dark:bg-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-200 border border-white/60 dark:border-white/10 hover:bg-white dark:hover:bg-slate-750 transition-all shadow-2xs cursor-pointer"
+                  >
+                    <Users className="w-3 h-3 text-indigo-500" />
+                    <span>Profiles ({profiles.length})</span>
+                  </button>
+                )}
+                {onOpenAddProfile && (
+                  <button
+                    type="button"
+                    onClick={onOpenAddProfile}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-[11px] font-bold text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/50 dark:border-indigo-800/30 transition-all shadow-2xs cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Profile</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
           {/* 7-Day Habit Tracker Momentum Dots */}
-          <div className="flex items-center gap-2 sm:gap-3 bg-white/50 dark:bg-slate-850/50 p-2 sm:p-3 rounded-2xl border border-white/50 dark:border-white/10 self-stretch md:self-auto justify-between sm:justify-start">
+          <div className="flex items-center gap-2 sm:gap-3 bg-white/50 dark:bg-slate-855/50 p-2 sm:p-3 rounded-2xl border border-white/50 dark:border-white/10 self-stretch md:self-auto justify-between sm:justify-start">
             <div className="text-right pr-2 border-r border-slate-200 dark:border-slate-700">
               <p className="text-[10px] uppercase font-bold text-slate-400">7-Day</p>
               <p className="text-xs font-black text-slate-800 dark:text-slate-200">Track</p>

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserProfile, HabitCategory, Habit } from '../types';
-import { StorageService, DEFAULT_PROFILE, generateStarterHabitsForUser } from '../services/storage';
+import { StorageService, DEFAULT_PROFILE, generateStarterHabitsForUser, getTodayDateString } from '../services/storage';
 import { 
   getSupabase, 
   isSupabaseConfigured, 
@@ -29,6 +29,7 @@ import {
 
 interface AuthContextType {
   user: UserProfile | null;
+  profiles: UserProfile[];
   firebaseUser: FirebaseUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -43,6 +44,28 @@ interface AuthContextType {
   cancelPasswordRecovery: () => void;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  switchProfile: (profileId: string) => Promise<void>;
+  createProfile: (profileData: {
+    name: string;
+    avatarUrl?: string;
+    bio?: string;
+    motivation?: string;
+    selectedCategories?: HabitCategory[];
+    goals?: string[];
+    reminderTimePreference?: string;
+    wakeTime?: string;
+    sleepTime?: string;
+    starterHabits?: Array<{
+      name: string;
+      category: HabitCategory;
+      icon: string;
+      color: string;
+      goalTarget: number;
+      goalUnit: string;
+      reminderTime: string;
+    }>;
+  }) => Promise<UserProfile>;
+  deleteProfile: (profileId: string) => Promise<void>;
   completeOnboarding: (onboardingData: {
     name?: string;
     avatarUrl?: string;
@@ -60,7 +83,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(() => StorageService.getProfile());
+  const [profiles, setProfiles] = useState<UserProfile[]>(() => StorageService.getProfiles());
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState<boolean>(false);
@@ -589,6 +613,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const updated = { ...user, ...updates };
     setUser(updated);
     StorageService.saveProfile(updated);
+    setProfiles(StorageService.getProfiles());
 
     const supabase = getSupabase();
     if (supabase && isSupabaseConfigured) {
@@ -607,7 +632,114 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // 9. Complete Onboarding
+  // 9. Switch Profile
+  const switchProfile = async (profileId: string) => {
+    StorageService.setActiveProfileId(profileId);
+    const active = StorageService.getProfile();
+    if (active) {
+      setUser(active);
+      setProfiles(StorageService.getProfiles());
+    }
+  };
+
+  // 10. Create New Profile (Starts fresh tracking from 0!)
+  const createProfile = async (profileData: {
+    name: string;
+    avatarUrl?: string;
+    bio?: string;
+    motivation?: string;
+    selectedCategories?: HabitCategory[];
+    goals?: string[];
+    reminderTimePreference?: string;
+    wakeTime?: string;
+    sleepTime?: string;
+    starterHabits?: Array<{
+      name: string;
+      category: HabitCategory;
+      icon: string;
+      color: string;
+      goalTarget: number;
+      goalUnit: string;
+      reminderTime: string;
+    }>;
+  }): Promise<UserProfile> => {
+    const newId = 'profile-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 6);
+    const newProfile: UserProfile = {
+      ...DEFAULT_PROFILE,
+      id: newId,
+      name: profileData.name || 'Habit Builder',
+      email: `${(profileData.name || 'user').toLowerCase().replace(/\s+/g, '')}@todohabits.app`,
+      avatarUrl: profileData.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      bio: profileData.bio || 'Tracking daily habits and staying consistent.',
+      motivation: profileData.motivation || 'Build daily consistency from day 1',
+      selectedCategories: profileData.selectedCategories || ['Fitness', 'Nutrition', 'Mental wellness', 'Productivity'],
+      goals: profileData.goals || ['Build consistency', 'Track everyday routines'],
+      reminderTimePreference: profileData.reminderTimePreference || '08:00',
+      wakeTime: profileData.wakeTime || '07:00',
+      sleepTime: profileData.sleepTime || '23:00',
+      isOnboarded: true,
+      theme: 'light',
+      units: 'metric',
+      createdAt: new Date().toISOString(),
+    };
+
+    // Generate fresh starter habits with 0 completions, 0 streak, 0 tracking!
+    let habitsToSave: Habit[] = [];
+    if (profileData.starterHabits && profileData.starterHabits.length > 0) {
+      habitsToSave = profileData.starterHabits.map((h, idx) => ({
+        id: `habit-${newId}-${idx}-${Date.now().toString(36)}`,
+        userId: newId,
+        name: h.name,
+        category: h.category,
+        icon: h.icon,
+        color: h.color,
+        frequency: 'daily',
+        goalTarget: h.goalTarget,
+        goalUnit: h.goalUnit,
+        reminderTime: h.reminderTime || '08:00',
+        difficulty: 'medium',
+        startDate: getTodayDateString(),
+        streak: 0,
+        bestStreak: 0,
+        totalCompletions: 0,
+        isArchived: false,
+        isPaused: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }));
+    } else {
+      habitsToSave = generateStarterHabitsForUser(newProfile.selectedCategories, newId);
+    }
+
+    // Save profile, habits, and empty tracking data (completions, moods, metrics starting fresh at 0)
+    StorageService.saveHabitsForUser(newId, habitsToSave);
+    StorageService.saveCompletionsForUser(newId, []);
+    StorageService.saveMoodsForUser(newId, []);
+    StorageService.saveHealthMetricsForUser(newId, []);
+    StorageService.saveProfile(newProfile);
+
+    // Sync to Supabase if configured
+    const supabase = getSupabase();
+    if (supabase && isSupabaseConfigured) {
+      await SupabaseDataService.upsertProfile(newProfile);
+      for (const h of habitsToSave) {
+        await SupabaseDataService.saveHabit(h);
+      }
+    }
+
+    setUser(newProfile);
+    setProfiles(StorageService.getProfiles());
+    return newProfile;
+  };
+
+  // 11. Delete Profile
+  const deleteProfile = async (profileId: string) => {
+    const next = StorageService.deleteProfile(profileId);
+    setUser(next);
+    setProfiles(StorageService.getProfiles());
+  };
+
+  // 12. Complete Onboarding
   const completeOnboarding = async (onboardingData: {
     name?: string;
     avatarUrl?: string;
@@ -642,15 +774,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     setUser(updated);
     StorageService.saveProfile(updated);
+    setProfiles(StorageService.getProfiles());
 
-    // Save or generate initial focus habits
-    const currentHabits = StorageService.getHabits();
+    // Save or generate initial focus habits with 0 completions & 0 streaks
+    const currentHabits = StorageService.getHabits(userId);
     if (onboardingData.customStarters && onboardingData.customStarters.length > 0) {
       const formattedStarters = onboardingData.customStarters.map(h => ({
         ...h,
         userId,
+        streak: 0,
+        bestStreak: 0,
+        totalCompletions: 0,
       }));
-      StorageService.saveHabits(formattedStarters);
+      StorageService.saveHabitsForUser(userId, formattedStarters);
       const supabase = getSupabase();
       if (supabase && isSupabaseConfigured) {
         for (const h of formattedStarters) {
@@ -663,7 +799,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     } else if (currentHabits.length === 0) {
       const starters = generateStarterHabitsForUser(onboardingData.selectedCategories, userId);
-      StorageService.saveHabits(starters);
+      StorageService.saveHabitsForUser(userId, starters);
 
       const supabase = getSupabase();
       if (supabase && isSupabaseConfigured) {
@@ -695,6 +831,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <AuthContext.Provider
       value={{
         user,
+        profiles,
         firebaseUser,
         isAuthenticated: !!user,
         isLoading,
@@ -709,6 +846,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         cancelPasswordRecovery,
         logout,
         updateProfile,
+        switchProfile,
+        createProfile,
+        deleteProfile,
         completeOnboarding,
       }}
     >

@@ -14,6 +14,8 @@ import {
 
 const STORAGE_KEYS = {
   USER_PROFILE: 'todo_habits_user_profile',
+  PROFILES_LIST: 'todo_habits_profiles_list',
+  ACTIVE_PROFILE_ID: 'todo_habits_active_profile_id',
   AUTH_TOKEN: 'todo_habits_auth_token',
   HABITS: 'todo_habits_items',
   COMPLETIONS: 'todo_habits_completions',
@@ -151,14 +153,56 @@ export const INITIAL_AI_INSIGHT: AIInsight = {
 
 // Storage Service API
 export const StorageService = {
+  getProfiles(): UserProfile[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.PROFILES_LIST);
+    if (!raw) {
+      const single = this.getProfile();
+      if (single) {
+        this.saveProfiles([single]);
+        return [single];
+      }
+      return [];
+    }
+    try {
+      const list = JSON.parse(raw);
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  },
+
+  saveProfiles(profiles: UserProfile[]): void {
+    localStorage.setItem(STORAGE_KEYS.PROFILES_LIST, JSON.stringify(profiles));
+  },
+
+  getActiveProfileId(): string | null {
+    return localStorage.getItem(STORAGE_KEYS.ACTIVE_PROFILE_ID);
+  },
+
+  setActiveProfileId(id: string): void {
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_PROFILE_ID, id);
+    const profiles = this.getProfiles();
+    const active = profiles.find(p => p.id === id);
+    if (active) {
+      localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(active));
+    }
+  },
+
   getProfile(): UserProfile | null {
+    const activeId = this.getActiveProfileId();
+    if (activeId) {
+      const profiles = this.getProfiles();
+      const match = profiles.find(p => p.id === activeId);
+      if (match) return match;
+    }
+
     const raw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
     if (!raw) {
       return null;
     }
     try {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.email) {
+      if (parsed && (parsed.id || parsed.email || parsed.name)) {
         return parsed;
       }
       return null;
@@ -169,61 +213,152 @@ export const StorageService = {
 
   saveProfile(profile: UserProfile): void {
     localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
+    const profiles = this.getProfiles();
+    const index = profiles.findIndex(p => p.id === profile.id);
+    if (index >= 0) {
+      profiles[index] = profile;
+    } else {
+      profiles.push(profile);
+    }
+    this.saveProfiles(profiles);
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_PROFILE_ID, profile.id);
   },
 
-  getHabits(): Habit[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.HABITS);
-    if (!raw) {
-      return [];
+  deleteProfile(profileId: string): UserProfile | null {
+    let profiles = this.getProfiles();
+    profiles = profiles.filter(p => p.id !== profileId);
+    this.saveProfiles(profiles);
+
+    // Remove habit/completions/moods/metrics for this profile
+    const allHabits = this.getAllHabits().filter(h => h.userId !== profileId);
+    this.saveHabits(allHabits);
+
+    const allCompletions = this.getAllCompletions().filter(c => c.userId !== profileId);
+    this.saveCompletions(allCompletions);
+
+    const allMoods = this.getAllMoods().filter(m => m.userId !== profileId);
+    this.saveMoods(allMoods);
+
+    const allMetrics = this.getAllHealthMetrics().filter(m => m.userId !== profileId);
+    this.saveHealthMetrics(allMetrics);
+
+    const activeId = this.getActiveProfileId();
+    if (activeId === profileId) {
+      if (profiles.length > 0) {
+        this.setActiveProfileId(profiles[0].id);
+        return profiles[0];
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.ACTIVE_PROFILE_ID);
+        localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+        return null;
+      }
     }
+    return this.getProfile();
+  },
+
+  getAllHabits(): Habit[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.HABITS);
+    if (!raw) return [];
     try {
       return JSON.parse(raw);
     } catch {
       return [];
     }
+  },
+
+  getHabits(userId?: string): Habit[] {
+    const all = this.getAllHabits();
+    if (!userId) {
+      const active = this.getProfile();
+      if (active && active.id) {
+        const userHabits = all.filter(h => h.userId === active.id);
+        return userHabits;
+      }
+      return all;
+    }
+    return all.filter(h => h.userId === userId);
   },
 
   saveHabits(habits: Habit[]): void {
     localStorage.setItem(STORAGE_KEYS.HABITS, JSON.stringify(habits));
   },
 
-  getCompletions(): HabitCompletion[] {
+  saveHabitsForUser(userId: string, userHabits: Habit[]): void {
+    const all = this.getAllHabits();
+    const otherUsersHabits = all.filter(h => h.userId && h.userId !== userId);
+    const updated = [...otherUsersHabits, ...userHabits];
+    this.saveHabits(updated);
+  },
+
+  getAllCompletions(): HabitCompletion[] {
     const raw = localStorage.getItem(STORAGE_KEYS.COMPLETIONS);
-    if (!raw) {
-      return [];
-    }
+    if (!raw) return [];
     try {
       return JSON.parse(raw);
     } catch {
       return [];
     }
+  },
+
+  getCompletions(userId?: string): HabitCompletion[] {
+    const all = this.getAllCompletions();
+    if (!userId) {
+      const active = this.getProfile();
+      if (active && active.id) {
+        return all.filter(c => c.userId === active.id);
+      }
+      return all;
+    }
+    return all.filter(c => c.userId === userId);
   },
 
   saveCompletions(completions: HabitCompletion[]): void {
     localStorage.setItem(STORAGE_KEYS.COMPLETIONS, JSON.stringify(completions));
   },
 
-  getMoods(): MoodEntry[] {
+  saveCompletionsForUser(userId: string, userCompletions: HabitCompletion[]): void {
+    const all = this.getAllCompletions();
+    const others = all.filter(c => c.userId && c.userId !== userId);
+    const updated = [...others, ...userCompletions];
+    this.saveCompletions(updated);
+  },
+
+  getAllMoods(): MoodEntry[] {
     const raw = localStorage.getItem(STORAGE_KEYS.MOODS);
-    if (!raw) {
-      return [];
-    }
+    if (!raw) return [];
     try {
       return JSON.parse(raw);
     } catch {
       return [];
     }
+  },
+
+  getMoods(userId?: string): MoodEntry[] {
+    const all = this.getAllMoods();
+    if (!userId) {
+      const active = this.getProfile();
+      if (active && active.id) {
+        return all.filter(m => m.userId === active.id);
+      }
+      return all;
+    }
+    return all.filter(m => m.userId === userId);
   },
 
   saveMoods(moods: MoodEntry[]): void {
     localStorage.setItem(STORAGE_KEYS.MOODS, JSON.stringify(moods));
   },
 
-  getHealthMetrics(): HealthMetric[] {
+  saveMoodsForUser(userId: string, userMoods: MoodEntry[]): void {
+    const all = this.getAllMoods();
+    const others = all.filter(m => m.userId && m.userId !== userId);
+    const updated = [...others, ...userMoods];
+    this.saveMoods(updated);
+  },
+
+  getAllHealthMetrics(): HealthMetric[] {
     const raw = localStorage.getItem(STORAGE_KEYS.HEALTH_METRICS);
-    if (!raw) {
-      return [];
-    }
+    if (!raw) return [];
     try {
       return JSON.parse(raw);
     } catch {
@@ -231,8 +366,27 @@ export const StorageService = {
     }
   },
 
+  getHealthMetrics(userId?: string): HealthMetric[] {
+    const all = this.getAllHealthMetrics();
+    if (!userId) {
+      const active = this.getProfile();
+      if (active && active.id) {
+        return all.filter(m => m.userId === active.id);
+      }
+      return all;
+    }
+    return all.filter(m => m.userId === userId);
+  },
+
   saveHealthMetrics(metrics: HealthMetric[]): void {
     localStorage.setItem(STORAGE_KEYS.HEALTH_METRICS, JSON.stringify(metrics));
+  },
+
+  saveHealthMetricsForUser(userId: string, userMetrics: HealthMetric[]): void {
+    const all = this.getAllHealthMetrics();
+    const others = all.filter(m => m.userId && m.userId !== userId);
+    const updated = [...others, ...userMetrics];
+    this.saveHealthMetrics(updated);
   },
 
   getNotificationSettings(): NotificationSettings {

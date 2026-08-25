@@ -7,10 +7,11 @@ import {
   Bell, 
   User, 
   LogOut, 
-  ShieldCheck,
-  CheckCircle,
-  Clock,
-  Menu
+  ShieldCheck, 
+  CheckCircle, 
+  Clock, 
+  Menu,
+  Plus
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -19,6 +20,8 @@ import { Logo } from './Logo';
 interface HeaderProps {
   onOpenAuth: () => void;
   onOpenNewHabit: () => void;
+  onOpenAddProfile?: () => void;
+  onOpenProfileSwitcher?: () => void;
   onToggleSidebar?: () => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -27,12 +30,14 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   onOpenAuth,
   onOpenNewHabit,
+  onOpenAddProfile,
+  onOpenProfileSwitcher,
   onToggleSidebar,
   activeTab,
   setActiveTab,
 }) => {
   const { theme, setTheme, wellnessScore, habits, notificationSettings } = useApp();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, profiles, switchProfile, isAuthenticated, logout } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -130,19 +135,32 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* User Account / Auth Dropdown */}
+          {/* User Account / Multi-Profile Dropdown */}
           <div className="relative">
             {isAuthenticated ? (
               <button
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
                 className="flex items-center gap-2 pl-2 pr-3 py-1 rounded-2xl bg-white/60 dark:bg-slate-800/60 border border-white/50 dark:border-white/10 hover:bg-white/80 dark:hover:bg-slate-750 transition-all shadow-xs"
               >
-                <div className="w-7 h-7 rounded-xl ai-gradient flex items-center justify-center text-white text-xs font-bold shadow-xs">
-                  {user?.name ? user.name[0].toUpperCase() : 'U'}
+                {user?.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.name}
+                    className="w-7 h-7 rounded-xl object-cover border border-white/60 dark:border-white/20 shadow-xs"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-xl ai-gradient flex items-center justify-center text-white text-xs font-bold shadow-xs">
+                    {user?.name ? user.name[0].toUpperCase() : 'U'}
+                  </div>
+                )}
+                <div className="text-left hidden md:block max-w-[100px]">
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                    {user?.name || 'Account'}
+                  </p>
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                    Tracking 0+
+                  </p>
                 </div>
-                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 hidden md:block max-w-[90px] truncate">
-                  {user?.name || 'Account'}
-                </span>
               </button>
             ) : (
               <button
@@ -154,31 +172,112 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {showProfileMenu && isAuthenticated && (
-              <div className="absolute right-0 mt-2 w-56 glass-card rounded-2xl p-2 shadow-xl z-50 animate-fadeIn text-xs">
-                <div className="px-3 py-2 border-b border-white/40 dark:border-white/10">
-                  <p className="font-bold text-slate-900 dark:text-white truncate">{user?.name}</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
+              <div className="absolute right-0 mt-2 w-64 glass-card rounded-2xl p-2.5 shadow-2xl z-50 animate-fadeIn text-xs border border-white/50 dark:border-white/10">
+                <div className="px-3 py-2 border-b border-white/40 dark:border-white/10 flex items-center gap-2.5">
+                  {user?.avatarUrl ? (
+                    <img src={user.avatarUrl} alt="" className="w-9 h-9 rounded-xl object-cover shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-xl ai-gradient flex items-center justify-center text-white font-bold shrink-0">
+                      {user?.name?.[0] || 'U'}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-900 dark:text-white truncate">{user?.name}</p>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active Tracking
+                    </span>
+                  </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setActiveTab('profile');
-                    setShowProfileMenu(false);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/60 flex items-center gap-2 transition-colors mt-1"
-                >
-                  <User className="w-3.5 h-3.5 text-indigo-500" />
-                  <span>Profile & Preferences</span>
-                </button>
-                <button
-                  onClick={() => {
-                    logout();
-                    setShowProfileMenu(false);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50/80 dark:hover:bg-rose-950/40 flex items-center gap-2 transition-colors"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
-                </button>
+
+                {/* Switch Profiles List (if multiple profiles exist) */}
+                <div className="py-2 border-b border-white/40 dark:border-white/10">
+                  <div className="flex items-center justify-between px-2 pb-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                    <span>Profiles ({profiles.length})</span>
+                    {onOpenProfileSwitcher && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowProfileMenu(false);
+                          onOpenProfileSwitcher();
+                        }}
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                      >
+                        Manage
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-1 max-h-36 overflow-y-auto">
+                    {profiles.map((p) => {
+                      const isCurrent = p.id === user?.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            if (!isCurrent) switchProfile(p.id);
+                            setShowProfileMenu(false);
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition-colors ${
+                            isCurrent
+                              ? 'bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-100 font-medium'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/60'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            {p.avatarUrl ? (
+                              <img src={p.avatarUrl} alt="" className="w-5 h-5 rounded-lg object-cover" />
+                            ) : (
+                              <div className="w-5 h-5 rounded-lg ai-gradient text-white text-[10px] flex items-center justify-center font-bold">
+                                {p.name[0]}
+                              </div>
+                            )}
+                            <span className="truncate">{p.name}</span>
+                          </div>
+                          {isCurrent && <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">Active</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Add New Profile CTA Button */}
+                  {onOpenAddProfile && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        onOpenAddProfile();
+                      }}
+                      className="w-full mt-2 py-2 px-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Profile (Start Fresh 0)</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="pt-1.5 space-y-1">
+                  <button
+                    onClick={() => {
+                      setActiveTab('profile');
+                      setShowProfileMenu(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/60 flex items-center gap-2 transition-colors"
+                  >
+                    <User className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Profile & 12H Schedule</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      logout();
+                      setShowProfileMenu(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50/80 dark:hover:bg-rose-950/40 flex items-center gap-2 transition-colors"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

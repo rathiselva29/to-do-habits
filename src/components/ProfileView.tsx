@@ -17,7 +17,9 @@ import {
   FileText,
   FileSpreadsheet,
   AlertTriangle,
-  Check
+  Check,
+  Plus,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -27,6 +29,8 @@ import { NotificationService } from '../services/notifications';
 
 interface ProfileViewProps {
   onOpenAuth: () => void;
+  onOpenAddProfile?: () => void;
+  onOpenProfileSwitcher?: () => void;
 }
 
 const AVATAR_OPTIONS = [
@@ -38,8 +42,12 @@ const AVATAR_OPTIONS = [
   'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
 ];
 
-export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
-  const { user, isAuthenticated, logout, updateProfile } = useAuth();
+export const ProfileView: React.FC<ProfileViewProps> = ({ 
+  onOpenAuth,
+  onOpenAddProfile,
+  onOpenProfileSwitcher,
+}) => {
+  const { user, profiles, switchProfile, isAuthenticated, logout, updateProfile } = useAuth();
   const { 
     theme, 
     setTheme, 
@@ -392,8 +400,100 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
           </div>
         </div>
 
-        {/* Right 1 Col: Data Management & Actions */}
+        {/* Right 1 Col: Profile Management & Data Actions */}
         <div className="space-y-6">
+          {/* Multi-Profile Tracking Card */}
+          <div className="p-6 rounded-3xl glass-card shadow-lg space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-white/50 dark:border-white/10">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-indigo-500" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Profiles ({profiles.length})
+                </h3>
+              </div>
+              {onOpenAddProfile && (
+                <button
+                  type="button"
+                  onClick={onOpenAddProfile}
+                  className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add New</span>
+                </button>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Add separate profiles for each person. Each profile starts daily tracking from 0 with independent routines and notifications.
+            </p>
+
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {profiles.map((p) => {
+                const isActive = p.id === user?.id;
+                const habitsCount = StorageService.getHabits(p.id).filter(h => !h.isArchived && !h.isPaused).length;
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => {
+                      if (!isActive) switchProfile(p.id);
+                    }}
+                    className={`flex items-center justify-between p-2.5 rounded-2xl border transition-all cursor-pointer ${
+                      isActive
+                        ? 'border-indigo-500 bg-indigo-50/80 dark:bg-indigo-950/50 shadow-xs ring-1 ring-indigo-400/40'
+                        : 'border-white/60 dark:border-white/10 bg-white/40 dark:bg-slate-800/40 hover:bg-white/80 dark:hover:bg-slate-750'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {p.avatarUrl ? (
+                        <img src={p.avatarUrl} alt="" className="w-8 h-8 rounded-xl object-cover shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-xl ai-gradient text-white flex items-center justify-center text-xs font-bold shrink-0">
+                          {p.name[0]}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {p.name}
+                        </p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                          {habitsCount} habits • Starts from 0
+                        </p>
+                      </div>
+                    </div>
+
+                    {isActive ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white shadow-2xs">
+                        Active
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          switchProfile(p.id);
+                        }}
+                        className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1"
+                      >
+                        Switch
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {onOpenAddProfile && (
+              <button
+                type="button"
+                onClick={onOpenAddProfile}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl ai-gradient text-white text-xs font-bold shadow-md shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Profile (Start Fresh 0)</span>
+              </button>
+            )}
+          </div>
+
           {/* Data Export Card */}
           <div className="p-6 rounded-3xl glass-card shadow-lg space-y-4">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white pb-2 border-b border-white/50 dark:border-white/10">

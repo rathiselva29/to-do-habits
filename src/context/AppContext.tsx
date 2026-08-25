@@ -150,11 +150,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const currentUserId = user.id;
 
-    // Load from local storage initially
-    const localHabits = StorageService.getHabits().filter(h => h.userId === currentUserId || !h.userId);
-    const localCompletions = StorageService.getCompletions().filter(c => c.userId === currentUserId || !c.userId);
-    const localMoods = StorageService.getMoods().filter(m => m.userId === currentUserId || !m.userId);
-    const localMetrics = StorageService.getHealthMetrics().filter(hm => hm.userId === currentUserId || !hm.userId);
+    // Load from local storage initially for this profile
+    const localHabits = StorageService.getHabits(currentUserId);
+    const localCompletions = StorageService.getCompletions(currentUserId);
+    const localMoods = StorageService.getMoods(currentUserId);
+    const localMetrics = StorageService.getHealthMetrics(currentUserId);
 
     const updatedHabits = localHabits.map(h => {
       const stats = calculateHabitStreaks(h.id, localCompletions);
@@ -401,7 +401,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       triggerConfetti();
     }
 
-    StorageService.saveCompletions(newCompletions);
+    StorageService.saveCompletionsForUser(currentUserId, newCompletions);
     setCompletions(newCompletions);
 
     // Recalculate habit streak stats
@@ -431,7 +431,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return h;
     });
 
-    StorageService.saveHabits(updatedHabits);
+    StorageService.saveHabitsForUser(currentUserId, updatedHabits);
     setHabits(updatedHabits);
 
     // Check if all active habits for today are now completed
@@ -459,7 +459,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     const updated = [newHabit, ...habits];
-    StorageService.saveHabits(updated);
+    StorageService.saveHabitsForUser(currentUserId, updated);
     setHabits(updated);
 
     const supabase = getSupabase();
@@ -478,6 +478,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateHabit = (id: string, updates: Partial<Habit>) => {
     if (!user?.id) return;
+    const currentUserId = user.id;
     const updated = habits.map(h => {
       if (h.id === id) {
         const item = { ...h, ...updates, updatedAt: new Date().toISOString() };
@@ -491,7 +492,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       return h;
     });
-    StorageService.saveHabits(updated);
+    StorageService.saveHabitsForUser(currentUserId, updated);
     setHabits(updated);
     StorageService.addToSyncQueue({
       entity: 'habit',
@@ -505,8 +506,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const currentUserId = user.id;
     const updated = habits.filter(h => h.id !== id);
     const updatedCompletions = completions.filter(c => c.habitId !== id);
-    StorageService.saveHabits(updated);
-    StorageService.saveCompletions(updatedCompletions);
+    StorageService.saveHabitsForUser(currentUserId, updated);
+    StorageService.saveCompletionsForUser(currentUserId, updatedCompletions);
     setHabits(updated);
     setCompletions(updatedCompletions);
 
@@ -551,7 +552,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     const filtered = moodEntries.filter(m => m.date !== dateStr);
     const updated = [newEntry, ...filtered];
-    StorageService.saveMoods(updated);
+    StorageService.saveMoodsForUser(currentUserId, updated);
     setMoodEntries(updated);
 
     const supabase = getSupabase();
@@ -596,7 +597,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updated = [targetMetric, ...healthMetrics];
     }
 
-    StorageService.saveHealthMetrics(updated);
+    StorageService.saveHealthMetricsForUser(currentUserId, updated);
     setHealthMetrics(updated);
 
     const supabase = getSupabase();

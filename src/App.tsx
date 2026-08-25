@@ -13,6 +13,8 @@ import { RootAuthView } from './components/RootAuthView';
 import { ResetPasswordView } from './components/ResetPasswordView';
 import { HabitCreatorModal } from './components/HabitCreatorModal';
 import { HabitDetailsModal } from './components/HabitDetailsModal';
+import { AddProfileModal } from './components/AddProfileModal';
+import { ProfileSwitcherModal } from './components/ProfileSwitcherModal';
 import { DashboardView } from './components/DashboardView';
 import { HabitsView } from './components/HabitsView';
 import { AICoachView } from './components/AICoachView';
@@ -29,6 +31,8 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isNewHabitOpen, setIsNewHabitOpen] = useState(false);
+  const [isAddProfileOpen, setIsAddProfileOpen] = useState(false);
+  const [isProfileSwitcherOpen, setIsProfileSwitcherOpen] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [selectedHabitForDetails, setSelectedHabitForDetails] = useState<Habit | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -131,6 +135,8 @@ function AppContent() {
           setEditingHabit(null);
           setIsNewHabitOpen(true);
         }}
+        onOpenAddProfile={() => setIsAddProfileOpen(true)}
+        onOpenProfileSwitcher={() => setIsProfileSwitcherOpen(true)}
         onToggleSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
       />
 
@@ -158,6 +164,8 @@ function AppContent() {
               }}
               onOpenHabitDetails={(habit) => setSelectedHabitForDetails(habit)}
               setActiveTab={setActiveTab}
+              onOpenAddProfile={() => setIsAddProfileOpen(true)}
+              onOpenProfileSwitcher={() => setIsProfileSwitcherOpen(true)}
             />
           )}
 
@@ -183,7 +191,11 @@ function AppContent() {
           {activeTab === 'calendar' && <CalendarView />}
 
           {activeTab === 'profile' && (
-            <ProfileView onOpenAuth={() => setIsAuthOpen(true)} />
+            <ProfileView 
+              onOpenAuth={() => setIsAuthOpen(true)}
+              onOpenAddProfile={() => setIsAddProfileOpen(true)}
+              onOpenProfileSwitcher={() => setIsProfileSwitcherOpen(true)}
+            />
           )}
         </main>
       </div>
@@ -210,6 +222,20 @@ function AppContent() {
         isOpen={!!selectedHabitForDetails}
         onClose={() => setSelectedHabitForDetails(null)}
         onEdit={handleOpenEditHabit}
+      />
+
+      <AddProfileModal
+        isOpen={isAddProfileOpen}
+        onClose={() => setIsAddProfileOpen(false)}
+        onProfileCreated={() => {
+          setActiveTab('dashboard');
+        }}
+      />
+
+      <ProfileSwitcherModal
+        isOpen={isProfileSwitcherOpen}
+        onClose={() => setIsProfileSwitcherOpen(false)}
+        onOpenAddProfile={() => setIsAddProfileOpen(true)}
       />
     </div>
   );
