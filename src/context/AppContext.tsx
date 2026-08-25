@@ -21,6 +21,8 @@ import { SupabaseDataService } from '../services/supabaseData';
 import { FirestoreDataService } from '../services/firestoreData';
 import { getSupabase, isSupabaseConfigured } from '../services/supabase';
 import { useAuth } from './AuthContext';
+import { NotificationService } from '../services/notifications';
+import { formatTimeTo12Hour } from '../utils/timeFormat';
 import confetti from 'canvas-confetti';
 
 interface AppContextType {
@@ -37,6 +39,7 @@ interface AppContextType {
   isSyncing: boolean;
   theme: 'light' | 'dark';
   celebrationEvent: { type: 'streak' | 'all_done'; streakCount?: number } | null;
+  activeReminderNotification: { id: string; title: string; body: string; habitId?: string; reminderTime?: string } | null;
 
   // Actions
   toggleHabitCompletion: (habitId: string, date?: string) => void;
@@ -45,6 +48,7 @@ interface AppContextType {
   deleteHabit: (id: string) => void;
   toggleHabitArchive: (id: string) => void;
   toggleHabitPause: (id: string) => void;
+  dismissReminder: () => void;
   
   // Mood
   logMood: (score: 1 | 2 | 3 | 4 | 5, emotions: any[], notes?: string, date?: string) => void;
@@ -80,6 +84,58 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [theme, setThemeState] = useState<'light' | 'dark'>('light');
   const [celebrationEvent, setCelebrationEvent] = useState<{ type: 'streak' | 'all_done'; streakCount?: number } | null>(null);
+  const [activeReminderNotification, setActiveReminderNotification] = useState<{
+    id: string;
+    title: string;
+    body: string;
+    habitId?: string;
+    reminderTime?: string;
+  } | null>(null);
+
+  // Periodic on-time habit reminder check
+  useEffect(() => {
+    if (!user || habits.length === 0) return;
+
+    const checkReminders = () => {
+      const now = new Date();
+      const currentHour = String(now.getHours()).padStart(2, '0');
+      const currentMin = String(now.getMinutes()).padStart(2, '0');
+      const currentTime24 = `${currentHour}:${currentMin}`;
+      const today = getTodayDateString();
+      const completedTodayIds = new Set(completions.filter(c => c.date === today).map(c => c.habitId));
+
+      for (const habit of habits) {
+        if (habit.isArchived || habit.isPaused) continue;
+        if (completedTodayIds.has(habit.id)) continue;
+
+        if (habit.reminderTime === currentTime24) {
+          if (!NotificationService.hasFiredThisMinute(`habit_${habit.id}`)) {
+            const time12 = formatTimeTo12Hour(habit.reminderTime);
+            const title = `Routine Reminder: ${habit.name}`;
+            const body = `It's ${time12}! Time for your ${habit.category} routine.`;
+
+            NotificationService.triggerNotification(title, body);
+            setActiveReminderNotification({
+              id: `reminder-${habit.id}-${Date.now()}`,
+              title,
+              body,
+              habitId: habit.id,
+              reminderTime: habit.reminderTime,
+            });
+            break;
+          }
+        }
+      }
+    };
+
+    checkReminders();
+    const interval = setInterval(checkReminders, 25000);
+    return () => clearInterval(interval);
+  }, [habits, completions, user]);
+
+  const dismissReminder = () => {
+    setActiveReminderNotification(null);
+  };
 
   // Load user data whenever authenticated user changes
   useEffect(() => {
@@ -341,6 +397,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         FirestoreDataService.saveCompletion(newCompletion);
       }
 
+      NotificationService.playChime('completion');
       triggerConfetti();
     }
 
@@ -352,6 +409,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (h.id === habitId) {
         const stats = calculateHabitStreaks(h.id, newCompletions);
         if (isCompletedNow && stats.currentStreak > 0 && stats.currentStreak % 5 === 0) {
+          NotificationService.playChime('streak');
           setCelebrationEvent({ type: 'streak', streakCount: stats.currentStreak });
         }
         const updatedHabitItem: Habit = {
@@ -380,6 +438,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const activeHabitsToday = updatedHabits.filter(h => !h.isArchived && !h.isPaused);
     const completedTodayCount = newCompletions.filter(c => c.date === dateStr).length;
     if (isCompletedNow && activeHabitsToday.length > 0 && completedTodayCount >= activeHabitsToday.length) {
+      NotificationService.playChime('streak');
       setCelebrationEvent({ type: 'all_done' });
     }
   };
@@ -685,6 +744,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isSyncing,
         theme,
         celebrationEvent,
+        activeReminderNotification,
+        dismissReminder,
         toggleHabitCompletion,
         createHabit,
         updateHabit,

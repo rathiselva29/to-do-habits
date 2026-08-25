@@ -27,6 +27,7 @@ import { Habit, HabitCategory, HabitDifficulty, HabitFrequency } from '../types'
 import { useApp } from '../context/AppContext';
 import { ApiService } from '../services/api';
 import { IconRenderer } from './IconRenderer';
+import { TimePicker12 } from './TimePicker12';
 
 interface HabitCreatorModalProps {
   isOpen: boolean;
@@ -299,42 +300,40 @@ export const HabitCreatorModal: React.FC<HabitCreatorModalProps> = ({
           </div>
 
           {/* Goal Target & Reminder Time */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Target Amount
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={goalTarget}
-                onChange={(e) => setGoalTarget(Number(e.target.value))}
-                className="w-full glass-input rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Target Amount
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={goalTarget}
+                  onChange={(e) => setGoalTarget(Number(e.target.value))}
+                  className="w-full glass-input rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Unit
+                </label>
+                <input
+                  type="text"
+                  placeholder="mins, glasses"
+                  value={goalUnit}
+                  onChange={(e) => setGoalUnit(e.target.value)}
+                  className="w-full glass-input rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Unit
-              </label>
-              <input
-                type="text"
-                placeholder="mins, glasses, pages"
-                value={goalUnit}
-                onChange={(e) => setGoalUnit(e.target.value)}
-                className="w-full glass-input rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div className="col-span-2 sm:col-span-1">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Reminder Time
-              </label>
-              <input
-                type="time"
+              <TimePicker12
+                label="Daily Reminder (12-Hour AM/PM)"
                 value={reminderTime}
-                onChange={(e) => setReminderTime(e.target.value)}
-                className="w-full glass-input rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onChange={setReminderTime}
               />
             </div>
           </div>

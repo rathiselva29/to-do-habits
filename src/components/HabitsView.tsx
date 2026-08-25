@@ -19,6 +19,7 @@ import { Habit, HabitCategory } from '../types';
 import { useApp } from '../context/AppContext';
 import { IconRenderer } from './IconRenderer';
 import { getTodayDateString } from '../services/storage';
+import { formatTimeTo12Hour } from '../utils/timeFormat';
 
 interface HabitsViewProps {
   onOpenNewHabit: () => void;
@@ -267,9 +268,9 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                         </span>
 
                         {habit.reminderTime && (
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1 font-medium">
                             <Clock className="w-3 h-3 text-slate-400" />
-                            {habit.reminderTime}
+                            {formatTimeTo12Hour(habit.reminderTime)}
                           </span>
                         )}
                       </div>

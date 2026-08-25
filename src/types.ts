@@ -105,6 +105,8 @@ export interface UserProfile {
   email: string;
   name: string;
   avatarUrl?: string;
+  bio?: string;
+  motivation?: string;
   selectedCategories: HabitCategory[];
   goals: string[];
   reminderTimePreference: string;

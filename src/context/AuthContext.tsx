@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { UserProfile, HabitCategory } from '../types';
+import { UserProfile, HabitCategory, Habit } from '../types';
 import { StorageService, DEFAULT_PROFILE, generateStarterHabitsForUser } from '../services/storage';
 import { 
   getSupabase, 
@@ -45,11 +45,15 @@ interface AuthContextType {
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   completeOnboarding: (onboardingData: {
     name?: string;
+    avatarUrl?: string;
+    bio?: string;
+    motivation?: string;
     selectedCategories: HabitCategory[];
     goals: string[];
     reminderTimePreference: string;
     wakeTime: string;
     sleepTime: string;
+    customStarters?: Habit[];
   }) => Promise<void>;
 }
 
@@ -606,26 +610,59 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // 9. Complete Onboarding
   const completeOnboarding = async (onboardingData: {
     name?: string;
+    avatarUrl?: string;
+    bio?: string;
+    motivation?: string;
     selectedCategories: HabitCategory[];
     goals: string[];
     reminderTimePreference: string;
     wakeTime: string;
     sleepTime: string;
+    customStarters?: Habit[];
   }) => {
-    if (!user) return;
+    const existingUser = user || StorageService.getProfile();
+    const userId = existingUser?.id || ('user-' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36));
+    
     const updated: UserProfile = {
-      ...user,
-      ...onboardingData,
-      name: onboardingData.name || user.name || (user.email ? user.email.split('@')[0] : 'User'),
+      ...(existingUser || DEFAULT_PROFILE),
+      id: userId,
+      name: onboardingData.name || existingUser?.name || 'Habit Builder',
+      email: existingUser?.email || 'local@todohabits.app',
+      avatarUrl: onboardingData.avatarUrl || existingUser?.avatarUrl || '',
+      bio: onboardingData.bio || existingUser?.bio || '',
+      motivation: onboardingData.motivation || existingUser?.motivation || 'Build daily consistency',
+      selectedCategories: onboardingData.selectedCategories,
+      goals: onboardingData.goals,
+      reminderTimePreference: onboardingData.reminderTimePreference,
+      wakeTime: onboardingData.wakeTime,
+      sleepTime: onboardingData.sleepTime,
       isOnboarded: true,
+      createdAt: existingUser?.createdAt || new Date().toISOString(),
     };
+
     setUser(updated);
     StorageService.saveProfile(updated);
 
-    // If new user has 0 habits, generate initial focus habits tailored to their chosen categories
+    // Save or generate initial focus habits
     const currentHabits = StorageService.getHabits();
-    if (currentHabits.length === 0) {
-      const starters = generateStarterHabitsForUser(onboardingData.selectedCategories, user.id);
+    if (onboardingData.customStarters && onboardingData.customStarters.length > 0) {
+      const formattedStarters = onboardingData.customStarters.map(h => ({
+        ...h,
+        userId,
+      }));
+      StorageService.saveHabits(formattedStarters);
+      const supabase = getSupabase();
+      if (supabase && isSupabaseConfigured) {
+        for (const h of formattedStarters) {
+          await SupabaseDataService.saveHabit(h);
+        }
+      } else if (firebaseUser) {
+        for (const h of formattedStarters) {
+          await FirestoreDataService.saveHabit(h);
+        }
+      }
+    } else if (currentHabits.length === 0) {
+      const starters = generateStarterHabitsForUser(onboardingData.selectedCategories, userId);
       StorageService.saveHabits(starters);
 
       const supabase = getSupabase();

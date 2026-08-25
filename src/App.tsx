@@ -33,8 +33,10 @@ function AppContent() {
   const [selectedHabitForDetails, setSelectedHabitForDetails] = useState<Habit | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
-  // Unauthenticated screen state: Splash vs Login / Sign Up
+  // Unauthenticated & Onboarding screen state: Splash vs Onboarding vs Login / Sign Up
   const [showSplash, setShowSplash] = useState(true);
+  const [showOnboardingDirect, setShowOnboardingDirect] = useState(false);
+  const [showAuthDirect, setShowAuthDirect] = useState(false);
   const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register' | 'forgot'>('login');
 
   const handleOpenEditHabit = (habit: Habit) => {
@@ -65,39 +67,52 @@ function AppContent() {
     return <ResetPasswordView />;
   }
 
-  // 2. Unauthenticated Flow: Splash Screen & Login / Register View
-  if (!isAuthenticated || !user) {
-    if (showSplash) {
+  // 3. User is NOT onboarded yet (Fresh Start Flow: Splash -> Onboarding Steps 1, 2, 3)
+  if (!user || !user.isOnboarded) {
+    if (showAuthDirect) {
       return (
-        <SplashView
-          onGetStarted={() => {
-            setAuthInitialMode('register');
-            setShowSplash(false);
-          }}
-          onSignIn={() => {
-            setAuthInitialMode('login');
-            setShowSplash(false);
-          }}
-          onQuickDemo={() => {
-            loginAsGuestDemo();
+        <RootAuthView
+          initialMode={authInitialMode}
+          onBackToSplash={() => {
+            setShowAuthDirect(false);
+            setShowSplash(true);
           }}
         />
       );
     }
-    return (
-      <RootAuthView
-        initialMode={authInitialMode}
-        onBackToSplash={() => setShowSplash(true)}
-      />
-    );
-  }
 
-  // 3. Authenticated but First Time User: 3-Step Guided Onboarding Flow
-  if (!user.isOnboarded) {
+    if (showOnboardingDirect) {
+      return (
+        <div className="min-h-screen frosted-bg flex flex-col items-center justify-center p-4 sm:p-6">
+          <OnboardingModal
+            onBackToSplash={() => {
+              setShowOnboardingDirect(false);
+              setShowSplash(true);
+            }}
+            onComplete={() => {
+              setShowOnboardingDirect(false);
+            }}
+          />
+        </div>
+      );
+    }
+
+    // Default entry: Splash Screen
     return (
-      <div className="min-h-screen frosted-bg flex flex-col items-center justify-center p-4">
-        <OnboardingModal />
-      </div>
+      <SplashView
+        onGetStarted={() => {
+          setShowSplash(false);
+          setShowOnboardingDirect(true);
+        }}
+        onSignIn={() => {
+          setAuthInitialMode('login');
+          setShowSplash(false);
+          setShowAuthDirect(true);
+        }}
+        onQuickDemo={() => {
+          loginAsGuestDemo();
+        }}
+      />
     );
   }
 

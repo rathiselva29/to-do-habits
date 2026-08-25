@@ -16,15 +16,27 @@ import {
   Flame,
   FileText,
   FileSpreadsheet,
-  AlertTriangle
+  AlertTriangle,
+  Check
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { StorageService } from '../services/storage';
+import { TimePicker12 } from './TimePicker12';
+import { NotificationService } from '../services/notifications';
 
 interface ProfileViewProps {
   onOpenAuth: () => void;
 }
+
+const AVATAR_OPTIONS = [
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+];
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
   const { user, isAuthenticated, logout, updateProfile } = useAuth();
@@ -41,11 +53,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
 
   const [name, setName] = useState(user?.name || 'Alex Rivera');
   const [email, setEmail] = useState(user?.email || 'alex.rivera@example.com');
+  const [bio, setBio] = useState(user?.bio || 'Building daily consistency and physical wellness.');
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || AVATAR_OPTIONS[0]);
+  const [wakeTime, setWakeTime] = useState(user?.wakeTime || '07:00');
+  const [reminderTime, setReminderTime] = useState(user?.reminderTimePreference || '08:00');
+  const [sleepTime, setSleepTime] = useState(user?.sleepTime || '23:00');
   const [isSaved, setIsSaved] = useState(false);
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateProfile({ name, email });
+    await updateProfile({ 
+      name, 
+      email, 
+      bio, 
+      avatarUrl, 
+      wakeTime, 
+      reminderTimePreference: reminderTime, 
+      sleepTime 
+    });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
   };
@@ -94,10 +119,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
   };
 
   const handleResetData = () => {
-    if (window.confirm('Are you sure you want to clear your local cache? All your synced cloud data remains safe in Supabase.')) {
+    if (window.confirm('Are you sure you want to clear your local cache? All your synced cloud data remains safe.')) {
       StorageService.resetAllData();
       window.location.reload();
     }
+  };
+
+  const handleTestChime = () => {
+    NotificationService.playChime('completion');
   };
 
   return (
@@ -116,7 +145,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
           Profile & Preferences
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-          Manage your notifications, data exports, aesthetic theme, and account credentials.
+          Manage your profile details, 12-hour schedule timings, sound notifications, and exports.
         </p>
       </div>
 
@@ -130,7 +159,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
           >
             <div className="flex items-center justify-between pb-3 border-b border-white/50 dark:border-white/10">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Personal Information
+                Personal Profile & Avatar
               </h3>
               {!isAuthenticated && (
                 <button
@@ -138,9 +167,38 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
                   onClick={onOpenAuth}
                   className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
                 >
-                  Sign in to link account →
+                  Sign in to link cloud account →
                 </button>
               )}
+            </div>
+
+            {/* Avatar Selector */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Profile Avatar
+              </label>
+              <div className="flex items-center gap-3">
+                <img
+                  src={avatarUrl}
+                  alt="Avatar"
+                  referrerPolicy="no-referrer"
+                  className="w-14 h-14 rounded-2xl object-cover ring-2 ring-indigo-500/40 shadow-xs"
+                />
+                <div className="flex flex-wrap gap-2">
+                  {AVATAR_OPTIONS.map((av, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setAvatarUrl(av)}
+                      className={`w-9 h-9 rounded-xl overflow-hidden cursor-pointer transition-transform ${
+                        avatarUrl === av ? 'ring-2 ring-indigo-600 scale-105' : 'opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={av} alt="Option" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -169,32 +227,79 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Daily Focus / Intention
+              </label>
+              <input
+                type="text"
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="e.g. Build consistent morning routine & improve physical wellness"
+                className="w-full glass-input rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            {/* Daily Schedule Timings in 12-Hour AM/PM */}
+            <div className="pt-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                Personal Schedule & Anchor Times (12-Hour AM/PM)
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <TimePicker12
+                  label="Wake Up Time"
+                  value={wakeTime}
+                  onChange={setWakeTime}
+                />
+                <TimePicker12
+                  label="Daily Reminder"
+                  value={reminderTime}
+                  onChange={setReminderTime}
+                />
+                <TimePicker12
+                  label="Sleep / Bedtime"
+                  value={sleepTime}
+                  onChange={setSleepTime}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3">
               <span className="text-xs text-slate-400">
-                Member since {new Date(user?.createdAt || '2025-01-01').toLocaleDateString()}
+                {user?.id ? `User ID: ${user.id.substring(0, 14)}...` : 'Local profile active'}
               </span>
 
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl ai-gradient text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                className="px-6 py-2.5 rounded-xl ai-gradient text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
               >
                 {isSaved ? <CheckCircle2 className="w-3.5 h-3.5" /> : null}
-                <span>{isSaved ? 'Changes Saved' : 'Save Profile'}</span>
+                <span>{isSaved ? 'Changes Saved' : 'Save Profile & Times'}</span>
               </button>
             </div>
           </form>
 
           {/* Notifications Preferences */}
           <div className="p-6 sm:p-8 rounded-3xl glass-card shadow-lg space-y-5">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white pb-3 border-b border-white/50 dark:border-white/10">
-              Notification & Reminder Settings
-            </h3>
+            <div className="flex items-center justify-between pb-3 border-b border-white/50 dark:border-white/10">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                Notification & Sound Settings
+              </h3>
+              <button
+                type="button"
+                onClick={handleTestChime}
+                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-1"
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+                <span>Test Chime</span>
+              </button>
+            </div>
 
             <div className="space-y-3.5">
               <div className="flex items-center justify-between p-2 rounded-2xl glass-subcard">
                 <div>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">Habit Reminders</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Receive alerts at scheduled habit times</p>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">On-Time Habit Reminders</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Receive alerts at exact scheduled habit times</p>
                 </div>
                 <input
                   type="checkbox"
@@ -220,7 +325,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
               <div className="flex items-center justify-between p-2 rounded-2xl glass-subcard">
                 <div>
                   <p className="text-xs font-bold text-slate-900 dark:text-white">Evening Reflection Prompt</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Nightly 21:00 PM mood and gratitude check-in</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Nightly 09:00 PM mood and gratitude check-in</p>
                 </div>
                 <input
                   type="checkbox"
@@ -233,7 +338,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
               <div className="flex items-center justify-between p-2 rounded-2xl glass-subcard">
                 <div>
                   <p className="text-xs font-bold text-slate-900 dark:text-white">Celebratory Audio Effects</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Play pleasant haptic chime upon habit completion</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Play melodic audio chime upon habit completion</p>
                 </div>
                 <input
                   type="checkbox"
@@ -287,85 +392,78 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenAuth }) => {
           </div>
         </div>
 
-        {/* Right Col: Data Export, Account Reset & About */}
+        {/* Right 1 Col: Data Management & Actions */}
         <div className="space-y-6">
-          {/* Data Portability Card */}
+          {/* Data Export Card */}
           <div className="p-6 rounded-3xl glass-card shadow-lg space-y-4">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              Data Portability
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white pb-2 border-b border-white/50 dark:border-white/10">
+              Data & Backup
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              You own 100% of your wellness history. Export your logs anytime in standard machine-readable formats.
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Your habit history belongs to you. Download or backup your data anytime.
             </p>
 
             <div className="space-y-2">
               <button
+                type="button"
                 onClick={handleExportJSON}
-                className="w-full py-2.5 px-3.5 rounded-xl glass-subcard hover:border-indigo-400 text-slate-800 dark:text-slate-200 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer"
+                className="w-full flex items-center justify-between p-3 rounded-2xl glass-subcard hover:border-indigo-400 transition-colors text-left cursor-pointer"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <FileText className="w-4 h-4 text-indigo-500" />
-                  <span>Export JSON (Full Backup)</span>
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Export JSON Backup</span>
                 </div>
                 <Download className="w-3.5 h-3.5 text-slate-400" />
               </button>
 
               <button
+                type="button"
                 onClick={handleExportCSV}
-                className="w-full py-2.5 px-3.5 rounded-xl glass-subcard hover:border-indigo-400 text-slate-800 dark:text-slate-200 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer"
+                className="w-full flex items-center justify-between p-3 rounded-2xl glass-subcard hover:border-indigo-400 transition-colors text-left cursor-pointer"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <FileSpreadsheet className="w-4 h-4 text-teal-500" />
-                  <span>Export CSV (Spreadsheet)</span>
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Export CSV Data</span>
                 </div>
                 <Download className="w-3.5 h-3.5 text-slate-400" />
               </button>
             </div>
           </div>
 
-          {/* Account Actions & Danger Zone */}
+          {/* Account Actions */}
           <div className="p-6 rounded-3xl glass-card shadow-lg space-y-4">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              Account Management
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white pb-2 border-b border-white/50 dark:border-white/10">
+              Account Controls
             </h3>
 
             {isAuthenticated ? (
               <button
-                onClick={logout}
-                className="w-full py-2.5 px-4 rounded-xl bg-rose-50/80 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                type="button"
+                onClick={() => logout()}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-xs transition-colors cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
-                <span>Sign Out</span>
+                <span>Log Out of Supabase</span>
               </button>
             ) : (
               <button
+                type="button"
                 onClick={onOpenAuth}
-                className="w-full py-2.5 px-4 rounded-xl ai-gradient text-white text-xs font-bold transition-all shadow-xs cursor-pointer hover:scale-[1.01]"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl ai-gradient text-white font-bold text-xs shadow-xs transition-transform hover:scale-[1.02] cursor-pointer"
               >
-                Sign In or Register
+                <ShieldCheck className="w-4 h-4" />
+                <span>Connect Cloud Account</span>
               </button>
             )}
 
             <button
+              type="button"
               onClick={handleResetData}
-              className="w-full py-2.5 px-4 rounded-xl glass-subcard hover:border-rose-400 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 text-xs font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-2xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 text-xs font-semibold transition-colors cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Reset Local Storage Demo</span>
+              <span>Reset Local Cache</span>
             </button>
-          </div>
-
-          {/* About To-Do-Habits */}
-          <div className="p-6 rounded-3xl glass-card border border-indigo-500/30 shadow-lg space-y-2">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-500" />
-              <span className="text-xs font-bold text-slate-900 dark:text-white">
-                To-Do-Habits v1.0.0
-              </span>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Designed for intentional daily growth. Built with frosted glass aesthetics, offline-first sync, real Supabase authentication, and intelligent Gemini server-side coaching.
-            </p>
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Sparkles, 
   Flame, 
@@ -11,13 +11,21 @@ import {
   Calendar as CalendarIcon,
   Bot,
   ChevronRight,
-  TrendingUp
+  TrendingUp,
+  BellRing,
+  X,
+  Check,
+  Award,
+  Sun,
+  Moon,
+  Filter
 } from 'lucide-react';
 import { Habit } from '../types';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { IconRenderer } from './IconRenderer';
 import { getTodayDateString } from '../services/storage';
+import { formatTimeTo12Hour } from '../utils/timeFormat';
 
 interface DashboardViewProps {
   onOpenNewHabit: () => void;
@@ -37,8 +45,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     moodEntries, 
     wellnessScore, 
     aiInsight, 
+    activeReminderNotification,
+    dismissReminder,
     toggleHabitCompletion 
   } = useApp();
+
+  const [activeFilter, setActiveFilter] = useState<'all' | 'am' | 'pm' | 'pending' | 'completed'>('all');
 
   const todayStr = getTodayDateString();
   const activeHabits = habits.filter(h => !h.isArchived && !h.isPaused);
@@ -48,10 +60,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const completedCount = activeHabits.filter(h => completedTodayHabitIds.has(h.id)).length;
   const totalCount = activeHabits.length;
+  const pendingCount = totalCount - completedCount;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  // Filtered habits list
+  const filteredHabits = activeHabits.filter((h) => {
+    const isCompleted = completedTodayHabitIds.has(h.id);
+    const hour = parseInt(h.reminderTime?.split(':')[0] || '12', 10);
+    const isAM = hour < 12;
+
+    if (activeFilter === 'pending') return !isCompleted;
+    if (activeFilter === 'completed') return isCompleted;
+    if (activeFilter === 'am') return isAM;
+    if (activeFilter === 'pm') return !isAM;
+    return true;
+  });
 
   // Best active streak
   const currentStreak = habits.reduce((max, h) => Math.max(max, h.streak), 0);
+
+  // Past 7 Days Tracking Momentum
+  const last7Days = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const dateStr = d.toISOString().split('T')[0];
+    const dayLabel = d.toLocaleDateString('en-US', { weekday: 'narrow' });
+    const count = completions.filter(c => c.date === dateStr).length;
+    const isToday = dateStr === todayStr;
+    return { dateStr, dayLabel, count, isToday };
+  });
 
   // Today's mood
   const todayMood = moodEntries.find(m => m.date === todayStr);
@@ -60,16 +97,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Dynamic greeting based on hour
   const currentHour = new Date().getHours();
   let greetingTime = 'Good morning';
-  let dynamicSubtitle = 'Ready to make today count with mindful consistency?';
+  let dynamicSubtitle = 'Ready to build steady momentum today?';
   if (currentHour >= 12 && currentHour < 17) {
     greetingTime = 'Good afternoon';
     dynamicSubtitle = 'Keep up your steady momentum through the afternoon.';
   } else if (currentHour >= 17) {
     greetingTime = 'Good evening';
-    dynamicSubtitle = 'Time to wind down and celebrate today’s achievements.';
+    dynamicSubtitle = 'Wind down and celebrate today’s achievements.';
   }
 
-  // Today's formatted date string
   const todayFormatted = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'short',
@@ -78,7 +114,54 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-fadeIn pb-12">
-      {/* Top Greeting Section */}
+      {/* On-Time Habit Reminder Notification Alert Banner */}
+      {activeReminderNotification && (
+        <div className="p-4 rounded-3xl bg-gradient-to-r from-indigo-600 via-purple-600 to-teal-500 text-white shadow-xl shadow-indigo-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0">
+              <BellRing className="w-5 h-5 animate-bounce" />
+            </div>
+            <div>
+              <p className="text-xs uppercase font-extrabold tracking-wider text-indigo-100">
+                Scheduled Routine Reminder
+              </p>
+              <h4 className="text-sm sm:text-base font-black">
+                {activeReminderNotification.title}
+              </h4>
+              <p className="text-xs text-white/90">
+                {activeReminderNotification.body}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {activeReminderNotification.habitId && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeReminderNotification.habitId) {
+                    toggleHabitCompletion(activeReminderNotification.habitId);
+                  }
+                  dismissReminder();
+                }}
+                className="px-4 py-2 rounded-xl bg-white text-indigo-900 font-bold text-xs shadow-md hover:bg-white/90 transition-transform active:scale-95 cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Mark Done</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={dismissReminder}
+              className="p-2 rounded-xl hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Top Header & New Habit CTA */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-1">
@@ -102,12 +185,82 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </button>
       </div>
 
-      {/* Metrics Overview Bento Grid */}
+      {/* ================= PERSONAL HABIT MONITOR PER PERSON ================= */}
+      <div className="p-5 sm:p-6 rounded-3xl glass-card border border-white/60 dark:border-white/10 shadow-lg relative overflow-hidden">
+        {/* Glow ambient background */}
+        <div className="absolute -top-12 -right-12 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-5 relative z-10">
+          {/* User Persona Profile */}
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              {user?.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.name || 'User'}
+                  referrerPolicy="no-referrer"
+                  className="w-14 h-14 rounded-2xl object-cover ring-2 ring-indigo-500/40 shadow-sm"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-2xl ai-gradient text-white font-black text-xl flex items-center justify-center shadow-sm">
+                  {user?.name ? user.name[0].toUpperCase() : 'U'}
+                </div>
+              )}
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xs">
+                <Check className="w-3 h-3 stroke-[3]" />
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white truncate">
+                  {user?.name || 'Habit Builder'}
+                </h3>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[10px] font-extrabold uppercase">
+                  <Award className="w-3 h-3" />
+                  <span>Consistency Master</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">
+                {user?.bio || 'Building everyday consistency, health, and focus.'}
+              </p>
+            </div>
+          </div>
+
+          {/* 7-Day Habit Tracker Momentum Dots */}
+          <div className="flex items-center gap-2 sm:gap-3 bg-white/50 dark:bg-slate-850/50 p-2 sm:p-3 rounded-2xl border border-white/50 dark:border-white/10 self-stretch md:self-auto justify-between sm:justify-start">
+            <div className="text-right pr-2 border-r border-slate-200 dark:border-slate-700">
+              <p className="text-[10px] uppercase font-bold text-slate-400">7-Day</p>
+              <p className="text-xs font-black text-slate-800 dark:text-slate-200">Track</p>
+            </div>
+
+            {last7Days.map((day) => (
+              <div key={day.dateStr} className="flex flex-col items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400">{day.dayLabel}</span>
+                <div
+                  title={`${day.dateStr}: ${day.count} habits completed`}
+                  className={`w-7 h-7 rounded-xl flex items-center justify-center text-[11px] font-extrabold transition-transform ${
+                    day.count > 0
+                      ? 'bg-emerald-500 text-white shadow-xs scale-105'
+                      : day.isToday
+                      ? 'border-2 border-dashed border-indigo-400 text-indigo-600 dark:text-indigo-400'
+                      : 'bg-slate-200/70 dark:bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {day.count > 0 ? day.count : '-'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Metrics Overview Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Metric 1: Completed Today */}
         <div className="p-4 rounded-3xl glass-card hover:border-indigo-500/40 transition-all">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold mb-2">
-            <span>Completed</span>
+            <span>Daily Completion</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-500" />
           </div>
           <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
@@ -124,7 +277,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Metric 2: Current Streak */}
         <div className="p-4 rounded-3xl glass-card hover:border-amber-500/40 transition-all">
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold mb-2">
-            <span>Current Streak</span>
+            <span>Best Active Streak</span>
             <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
           </div>
           <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
@@ -132,7 +285,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </p>
           <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium mt-2 flex items-center gap-1 truncate">
             <Sparkles className="w-3 h-3 shrink-0" />
-            <span>Highest active streak</span>
+            <span>Highest active momentum</span>
           </p>
         </div>
 
@@ -169,43 +322,89 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">/ 100</span>
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 truncate">
-            Habits & sleep weighted
+            Rhythm & sleep balanced
           </p>
         </div>
       </div>
 
-      {/* Main Section: Daily Habits & Progress Ring */}
+      {/* Main Section: Daily Habits Tracker & Progress Ring */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Today's Habits List */}
-        <div className="lg:col-span-2 space-y-3.5">
-          <div className="flex items-center justify-between">
+        <div className="lg:col-span-2 space-y-4">
+          {/* Section Header & Filters */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                Today's Habits
+                Everyday Habits
               </h2>
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-white/60 dark:bg-slate-800/60 border border-white/50 dark:border-white/10 text-slate-700 dark:text-slate-300 backdrop-blur-md">
-                {completedCount} of {totalCount} done
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-white/60 dark:bg-slate-800/60 border border-white/50 dark:border-white/10 text-slate-700 dark:text-slate-300">
+                {completedCount} of {totalCount} Done
               </span>
             </div>
-            <button
-              onClick={() => setActiveTab('habits')}
-              className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-            >
-              <span>Manage all</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+
+            {/* Filter Pills */}
+            <div className="flex items-center gap-1 bg-slate-200/60 dark:bg-slate-800/60 p-1 rounded-2xl overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setActiveFilter('all')}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeFilter === 'all'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                All ({activeHabits.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveFilter('am')}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  activeFilter === 'am'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <Sun className="w-3 h-3 text-amber-500" />
+                <span>Morning AM</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveFilter('pm')}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  activeFilter === 'pm'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <Moon className="w-3 h-3 text-indigo-400" />
+                <span>PM</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveFilter('pending')}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeFilter === 'pending'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                Pending ({pendingCount})
+              </button>
+            </div>
           </div>
 
-          {activeHabits.length === 0 ? (
+          {filteredHabits.length === 0 ? (
             <div className="p-8 rounded-3xl glass-card border-dashed text-center space-y-3">
               <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
                 <CheckCircle2 className="w-6 h-6" />
               </div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                No active habits scheduled today
+                {activeFilter === 'pending'
+                  ? '🎉 All filtered habits completed for today!'
+                  : 'No habits in this category yet'}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-                Create your first anchor habit to begin your personalized daily wellness routine.
+                Create new anchor routines or toggle filters to view other scheduled habits.
               </p>
               <button
                 onClick={onOpenNewHabit}
@@ -217,15 +416,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           ) : (
             <div className="space-y-2.5">
-              {activeHabits.map((habit) => {
+              {filteredHabits.map((habit) => {
                 const isCompleted = completedTodayHabitIds.has(habit.id);
+                const time12 = habit.reminderTime ? formatTimeTo12Hour(habit.reminderTime) : '';
+
                 return (
                   <div
                     key={habit.id}
                     className={`group p-3.5 sm:p-4 rounded-3xl transition-all duration-200 flex items-center justify-between gap-3 ${
                       isCompleted
-                        ? 'bg-emerald-50/60 dark:bg-emerald-950/25 border border-emerald-400/40 backdrop-blur-md'
-                        : 'glass-card hover:border-indigo-400/40'
+                        ? 'bg-emerald-50/70 dark:bg-emerald-950/25 border border-emerald-400/40 backdrop-blur-md shadow-xs'
+                        : 'glass-card hover:border-indigo-400/50 hover:shadow-md'
                     }`}
                   >
                     {/* Habit Info & Icon */}
@@ -255,22 +456,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             {habit.name}
                           </h3>
                           {habit.streak > 0 && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full bg-amber-50/80 dark:bg-amber-950/60 shrink-0">
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full bg-amber-50/80 dark:bg-amber-950/60 shrink-0">
                               <Flame className="w-2.5 h-2.5 fill-amber-500" />
-                              {habit.streak}d
+                              {habit.streak}d streak
                             </span>
                           )}
                         </div>
 
                         <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          <span className="font-medium">{habit.category}</span>
-                          {habit.reminderTime && (
+                          <span className="font-semibold text-indigo-600 dark:text-indigo-400">{habit.category}</span>
+                          {time12 && (
                             <>
                               <span>•</span>
-                              <span className="flex items-center gap-0.5">
-                                <Clock className="w-3 h-3" />
-                                {habit.reminderTime}
+                              <span className="flex items-center gap-1 font-medium">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                {time12}
                               </span>
+                            </>
+                          )}
+                          {habit.goalTarget > 1 && (
+                            <>
+                              <span>•</span>
+                              <span>Target: {habit.goalTarget} {habit.goalUnit}</span>
                             </>
                           )}
                         </div>
@@ -281,7 +488,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <button
                       type="button"
                       onClick={() => toggleHabitCompletion(habit.id)}
-                      className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200 shrink-0 cursor-pointer ${
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-200 shrink-0 cursor-pointer ${
                         isCompleted
                           ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30 scale-105'
                           : 'border-2 border-slate-300/80 dark:border-slate-700 text-transparent hover:border-emerald-500 hover:text-emerald-500/40 bg-white/40 dark:bg-slate-850'
@@ -301,7 +508,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {/* Circular Progress Ring Card */}
           <div className="p-6 rounded-3xl glass-card flex flex-col items-center justify-center text-center">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">
-              Daily Progress
+              Daily Target Completion
             </h3>
 
             {/* SVG Circular Progress Ring */}
@@ -335,7 +542,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   {progressPercent}%
                 </span>
                 <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-                  Target
+                  Done
                 </span>
               </div>
             </div>
@@ -369,7 +576,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium relative z-10">
-              "{aiInsight?.recommendation || 'You are building strong morning consistency. Focus on completing your hydration and mindfulness routines before lunch.'}"
+              "{aiInsight?.recommendation || 'You are building steady habits. Complete your hydration and movement routines to keep your streak intact.'}"
             </p>
 
             <div className="flex items-center gap-2 pt-1 relative z-10">

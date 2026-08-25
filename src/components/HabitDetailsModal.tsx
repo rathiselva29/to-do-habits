@@ -20,6 +20,7 @@ import { Habit, HabitCompletion } from '../types';
 import { useApp } from '../context/AppContext';
 import { IconRenderer } from './IconRenderer';
 import { getPastDateString, getTodayDateString } from '../services/storage';
+import { formatTimeTo12Hour } from '../utils/timeFormat';
 
 interface HabitDetailsModalProps {
   habit: Habit | null;
@@ -218,7 +219,7 @@ export const HabitDetailsModal: React.FC<HabitDetailsModalProps> = ({
           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
             {habit.streak >= 5
               ? `You have locked in strong neurological momentum for "${habit.name}". Consider scaling the target slightly or pairing an adjacent micro-habit right afterwards!`
-              : `To strengthen consistency for "${habit.name}", place an obvious visual cue near where you spend your time at ${habit.reminderTime || '08:00 AM'}.`}
+              : `To strengthen consistency for "${habit.name}", place an obvious visual cue near where you spend your time around ${formatTimeTo12Hour(habit.reminderTime || '08:00')}.`}
           </p>
         </div>
 
