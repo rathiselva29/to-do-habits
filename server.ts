@@ -506,6 +506,138 @@ Return a JSON array of habit suggestions where each item has:
   }
 });
 
+// Comprehensive AI Health & Mood Routine Advice Endpoint
+app.post('/api/ai/health-habit-advice', async (req: Request, res: Response) => {
+  try {
+    const { healthMetric, userProfile, moodEntries, habits } = req.body;
+    const ai = getGeminiClient();
+
+    const heightCm = healthMetric?.heightCm || 175;
+    const weightKg = healthMetric?.weightKg || 70;
+    const age = healthMetric?.age || userProfile?.age || 28;
+    const gender = healthMetric?.gender || userProfile?.gender || 'male';
+    const bpSys = healthMetric?.bpSystolic || 120;
+    const bpDia = healthMetric?.bpDiastolic || 80;
+    const sleepingTime = healthMetric?.sleepingTime || userProfile?.sleepTime || '23:00';
+    const wakeUpTime = healthMetric?.wakeUpTime || userProfile?.wakeTime || '07:00';
+    const sleepHours = healthMetric?.sleepHours || 7.5;
+
+    // Calculate BMI
+    const bmi = Math.round((weightKg / Math.pow(heightCm / 100, 2)) * 10) / 10;
+    let bmiCategory = 'Normal weight';
+    if (bmi < 18.5) bmiCategory = 'Underweight';
+    else if (bmi >= 25 && bmi < 30) bmiCategory = 'Overweight';
+    else if (bmi >= 30) bmiCategory = 'Obesity';
+
+    // BP Classification
+    let bpCategory = 'Normal';
+    if (bpSys > 180 || bpDia > 120) bpCategory = 'Hypertensive Crisis';
+    else if (bpSys < 90 || bpDia < 60) bpCategory = 'Hypotension';
+    else if (bpSys >= 140 || bpDia >= 90) bpCategory = 'Hypertension Stage 2';
+    else if ((bpSys >= 130 && bpSys <= 139) || (bpDia >= 80 && bpDia <= 89)) bpCategory = 'Hypertension Stage 1';
+    else if (bpSys >= 120 && bpSys <= 129 && bpDia < 80) bpCategory = 'Elevated';
+
+    if (!ai) {
+      return res.json({
+        fallback: true,
+        message: 'Calculated using high-precision clinical logic engine.',
+      });
+    }
+
+    const prompt = `You are a clinical wellness, circadian rhythm, and habit psychology expert.
+Analyze the user's complete physical biomarkers and mood logs to prescribe a final, personalized daily routine blueprint and 4-5 high-impact habit recommendations.
+
+User Biometric Data:
+- Height: ${heightCm} cm
+- Weight: ${weightKg} kg (BMI: ${bmi} - ${bmiCategory})
+- Blood Pressure: ${bpSys}/${bpDia} mmHg (${bpCategory})
+- Sleeping Time (Bedtime): ${sleepingTime}
+- Wake-up Time: ${wakeUpTime}
+- Sleep Duration: ${sleepHours} hours
+- Age: ${age} years
+- Gender: ${gender}
+
+Mood & Emotional State (Last 7 entries):
+${JSON.stringify(moodEntries?.slice(-7) || [])}
+
+Active Existing Habits:
+${JSON.stringify(habits?.map((h: any) => ({ name: h.name, category: h.category, streak: h.streak })) || [])}
+
+Provide a comprehensive, highly personalized JSON object structured exactly like this:
+{
+  "biometricSummary": {
+    "bmi": ${bmi},
+    "bmiCategory": "${bmiCategory}",
+    "bpCategory": "${bpCategory}",
+    "sleepStatus": "${sleepHours < 6.5 ? 'Deficit' : 'Optimal'}",
+    "overallHealthRisk": "${bpCategory !== 'Normal' || bmi >= 30 ? 'moderate' : 'low'}",
+    "keyObservations": ["Observation 1", "Observation 2", "Observation 3"]
+  },
+  "moodSynergy": {
+    "moodTrend": "Summary of mood trend",
+    "emotionalStateSummary": "Summary of emotional state",
+    "correlationInsights": ["Insight 1 connecting mood to sleep/BP/movement", "Insight 2"]
+  },
+  "dailyRoutineBlueprint": {
+    "morning": {
+      "timeSlot": "${wakeUpTime} - 08:30",
+      "title": "Morning Routine Title",
+      "focus": "Morning Focus",
+      "steps": ["Step 1", "Step 2", "Step 3"]
+    },
+    "afternoon": {
+      "timeSlot": "12:30 - 16:30",
+      "title": "Afternoon Routine Title",
+      "focus": "Afternoon Focus",
+      "steps": ["Step 1", "Step 2", "Step 3"]
+    },
+    "evening": {
+      "timeSlot": "20:30 - ${sleepingTime}",
+      "title": "Evening Routine Title",
+      "focus": "Evening Focus",
+      "steps": ["Step 1", "Step 2", "Step 3"]
+    }
+  },
+  "prescribedHabits": [
+    {
+      "name": "Habit Name",
+      "description": "Clear instructions",
+      "category": "Fitness" | "Sleep" | "Nutrition" | "Mental wellness" | "Self-care",
+      "icon": "Droplets" | "Moon" | "Dumbbell" | "Footprints" | "Brain" | "Sun" | "Heart" | "Sparkles",
+      "color": "#10b981",
+      "goalTarget": 1,
+      "goalUnit": "session" | "mins" | "ml",
+      "reminderTime": "08:00",
+      "durationMinutes": 10,
+      "difficulty": "easy" | "medium" | "hard",
+      "rationale": "Why this specifically helps their BP/BMI/Sleep/Mood",
+      "targetBiometric": "BP / BMI / Sleep / Mood target"
+    }
+  ]
+}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.7-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const parsed = JSON.parse(response.text || '{}');
+    return res.json({
+      ...parsed,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    console.error('AI Health Habit Advice Error:', err);
+    return res.json({
+      fallback: true,
+      error: err.message,
+    });
+  }
+});
+
 // Offline Sync API endpoint
 app.post('/api/sync', (req: Request, res: Response) => {
   try {

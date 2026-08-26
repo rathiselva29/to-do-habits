@@ -25,7 +25,12 @@ import {
   ShieldCheck, 
   TrendingUp, 
   Sparkle,
-  Compass
+  Compass,
+  Wind,
+  Leaf,
+  MessageCircle,
+  Award,
+  Users
 } from 'lucide-react';
 
 interface IconRendererProps {
@@ -61,6 +66,11 @@ const ICON_MAP: Record<string, React.FC<any>> = {
   TrendingUp,
   Sparkle,
   Compass,
+  Wind,
+  Leaf,
+  MessageCircle,
+  Award,
+  Users,
 };
 
 export const IconRenderer: React.FC<IconRendererProps> = ({ name, className = 'w-5 h-5', size }) => {

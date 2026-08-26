@@ -66,6 +66,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [wakeTime, setWakeTime] = useState(user?.wakeTime || '07:00');
   const [reminderTime, setReminderTime] = useState(user?.reminderTimePreference || '08:00');
   const [sleepTime, setSleepTime] = useState(user?.sleepTime || '23:00');
+  const [heightCm, setHeightCm] = useState(user?.heightCm || 175);
+  const [weightKg, setWeightKg] = useState(user?.weightKg || 70);
+  const [age, setAge] = useState(user?.age || 28);
+  const [gender, setGender] = useState<'male' | 'female' | 'non-binary' | 'other' | 'prefer-not-to-say'>(user?.gender || 'male');
+  const [bpSystolic, setBpSystolic] = useState(user?.bpSystolic || 120);
+  const [bpDiastolic, setBpDiastolic] = useState(user?.bpDiastolic || 80);
   const [isSaved, setIsSaved] = useState(false);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -77,7 +83,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       avatarUrl, 
       wakeTime, 
       reminderTimePreference: reminderTime, 
-      sleepTime 
+      sleepTime,
+      heightCm: Number(heightCm),
+      weightKg: Number(weightKg),
+      age: Number(age),
+      gender,
+      bpSystolic: Number(bpSystolic),
+      bpDiastolic: Number(bpDiastolic),
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
@@ -269,6 +281,86 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   value={sleepTime}
                   onChange={setSleepTime}
                 />
+              </div>
+            </div>
+
+            {/* Baseline Biometrics & Health Profile */}
+            <div className="pt-2 border-t border-slate-200/50 dark:border-white/10">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                Baseline Health & Biometric Markers
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    Height (cm)
+                  </label>
+                  <input
+                    type="number"
+                    value={heightCm}
+                    onChange={(e) => setHeightCm(Number(e.target.value))}
+                    className="w-full glass-input rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    Weight (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={weightKg}
+                    onChange={(e) => setWeightKg(Number(e.target.value))}
+                    className="w-full glass-input rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    Age
+                  </label>
+                  <input
+                    type="number"
+                    value={age}
+                    onChange={(e) => setAge(Number(e.target.value))}
+                    className="w-full glass-input rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    Gender
+                  </label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value as any)}
+                    className="w-full glass-input rounded-xl px-2 py-2 text-xs text-slate-900 dark:text-white"
+                  >
+                    <option value="male" className="bg-slate-900 text-white">Male</option>
+                    <option value="female" className="bg-slate-900 text-white">Female</option>
+                    <option value="non-binary" className="bg-slate-900 text-white">Non-binary</option>
+                    <option value="other" className="bg-slate-900 text-white">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    BP Systolic
+                  </label>
+                  <input
+                    type="number"
+                    value={bpSystolic}
+                    onChange={(e) => setBpSystolic(Number(e.target.value))}
+                    className="w-full glass-input rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    BP Diastolic
+                  </label>
+                  <input
+                    type="number"
+                    value={bpDiastolic}
+                    onChange={(e) => setBpDiastolic(Number(e.target.value))}
+                    className="w-full glass-input rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
               </div>
             </div>
 

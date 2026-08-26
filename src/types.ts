@@ -89,14 +89,28 @@ export interface HealthMetric {
   id: string;
   userId: string;
   date: string; // YYYY-MM-DD
+  // Core Biometrics
+  heightCm?: number;
+  weightKg?: number;
+  age?: number;
+  gender?: 'male' | 'female' | 'non-binary' | 'other' | 'prefer-not-to-say';
+  // Blood Pressure (mmHg)
+  bpSystolic?: number;
+  bpDiastolic?: number;
+  // Sleep & Circadian Rhythm
+  sleepingTime?: string; // Bedtime e.g. "23:00"
+  wakeUpTime?: string; // Wakeup time e.g. "07:00"
   sleepHours?: number;
+  sleepQuality?: number; // 0-100%
+  // Physical & Lifestyle Metrics
   waterMl?: number;
   steps?: number;
+  activeMinutes?: number;
   exerciseMinutes?: number;
-  weightKg?: number;
   restingHeartRate?: number;
   meditationMinutes?: number;
   energyLevel?: number; // 1-10
+  notes?: string;
   updatedAt: string;
 }
 
@@ -112,10 +126,67 @@ export interface UserProfile {
   reminderTimePreference: string;
   wakeTime: string;
   sleepTime: string;
+  heightCm?: number;
+  weightKg?: number;
+  age?: number;
+  gender?: 'male' | 'female' | 'non-binary' | 'other' | 'prefer-not-to-say';
+  bpSystolic?: number;
+  bpDiastolic?: number;
   isOnboarded: boolean;
   theme: 'light' | 'dark' | 'system';
   units: 'metric' | 'imperial';
   createdAt: string;
+}
+
+export interface HealthHabitRoutineAdvice {
+  biometricSummary: {
+    bmi: number;
+    bmiCategory: string;
+    bpCategory: string;
+    sleepStatus: string;
+    overallHealthRisk: 'low' | 'moderate' | 'high';
+    keyObservations: string[];
+  };
+  moodSynergy: {
+    moodTrend: string;
+    emotionalStateSummary: string;
+    correlationInsights: string[];
+  };
+  dailyRoutineBlueprint: {
+    morning: {
+      timeSlot: string;
+      title: string;
+      focus: string;
+      steps: string[];
+    };
+    afternoon: {
+      timeSlot: string;
+      title: string;
+      focus: string;
+      steps: string[];
+    };
+    evening: {
+      timeSlot: string;
+      title: string;
+      focus: string;
+      steps: string[];
+    };
+  };
+  prescribedHabits: Array<{
+    name: string;
+    description: string;
+    category: HabitCategory;
+    icon: string;
+    color: string;
+    goalTarget: number;
+    goalUnit: string;
+    reminderTime: string;
+    durationMinutes: number;
+    difficulty: HabitDifficulty;
+    rationale: string;
+    targetBiometric: string;
+  }>;
+  generatedAt: string;
 }
 
 export interface NotificationSettings {

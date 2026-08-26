@@ -13,12 +13,15 @@ import {
   Flame
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { Logo } from './Logo';
 
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   onOpenNewHabit: () => void;
+  onOpenProfileSwitcher?: () => void;
+  onOpenAddProfile?: () => void;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
 }
@@ -38,10 +41,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
   onOpenNewHabit,
+  onOpenProfileSwitcher,
+  onOpenAddProfile,
   isOpenMobile,
   onCloseMobile,
 }) => {
   const { habits, completions } = useApp();
+  const { user, profiles } = useAuth();
   const todayStr = new Date().toISOString().split('T')[0];
   const activeCount = habits.filter(h => !h.isArchived && !h.isPaused).length;
   const doneToday = completions.filter(c => c.date === todayStr).length;
@@ -61,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           isOpenMobile ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Brand Logo in Sidebar */}
           <div 
             onClick={() => {
@@ -134,28 +140,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </nav>
         </div>
 
-        {/* Sidebar Footer Habit Summary Card */}
-        <div className="p-3.5 rounded-2xl glass-subcard">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-900 dark:text-white mb-1.5">
-            <span className="flex items-center gap-1.5">
-              <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-              Daily Focus
-            </span>
-            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
-              {activeCount > 0 ? Math.round((doneToday / activeCount) * 100) : 0}%
-            </span>
+        {/* Sidebar Bottom: Active Profile Badge + Focus Bar */}
+        <div className="space-y-2">
+          {/* Active Profile Info & Switcher Button */}
+          {user && (
+            <div 
+              onClick={() => {
+                if (onOpenProfileSwitcher) {
+                  onOpenProfileSwitcher();
+                  if (onCloseMobile) onCloseMobile();
+                }
+              }}
+              className="p-2.5 rounded-2xl glass-subcard border border-white/50 dark:border-white/10 flex items-center justify-between cursor-pointer hover:bg-white/70 dark:hover:bg-slate-800/70 transition-all shadow-xs"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                {user.avatarUrl ? (
+                  <img src={user.avatarUrl} alt={user.name} className="w-7 h-7 rounded-xl object-cover" />
+                ) : (
+                  <div className="w-7 h-7 rounded-xl ai-gradient text-white flex items-center justify-center text-[10px] font-bold">
+                    {user.name[0]}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{user.name}</p>
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Tracking 0+</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300">
+                {profiles.length}
+              </span>
+            </div>
+          )}
+
+          {/* Sidebar Footer Habit Summary Card */}
+          <div className="p-3 rounded-2xl glass-subcard">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-900 dark:text-white mb-1.5">
+              <span className="flex items-center gap-1.5">
+                <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                Daily Focus
+              </span>
+              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
+                {activeCount > 0 ? Math.round((doneToday / activeCount) * 100) : 0}%
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-slate-200/60 dark:bg-slate-700/60 rounded-full overflow-hidden">
+              <div
+                className="h-full ai-gradient rounded-full transition-all duration-500"
+                style={{ width: `${activeCount > 0 ? Math.min(100, (doneToday / activeCount) * 100) : 0}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2">
+              {doneToday >= activeCount && activeCount > 0
+                ? '✨ All habits complete today!'
+                : `${activeCount - doneToday} remaining for today`}
+            </p>
           </div>
-          <div className="w-full h-1.5 bg-slate-200/60 dark:bg-slate-700/60 rounded-full overflow-hidden">
-            <div
-              className="h-full ai-gradient rounded-full transition-all duration-500"
-              style={{ width: `${activeCount > 0 ? Math.min(100, (doneToday / activeCount) * 100) : 0}%` }}
-            />
-          </div>
-          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2">
-            {doneToday >= activeCount && activeCount > 0
-              ? '✨ All habits complete today!'
-              : `${activeCount - doneToday} remaining for today`}
-          </p>
         </div>
       </aside>
     </>

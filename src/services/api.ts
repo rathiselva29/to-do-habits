@@ -157,5 +157,25 @@ export const ApiService = {
     });
     if (!res.ok) throw new Error('Sync failed');
     return await res.json();
+  },
+
+  async getHealthHabitAdvice(params: {
+    healthMetric: Partial<HealthMetric>;
+    userProfile?: Partial<UserProfile>;
+    moodEntries: MoodEntry[];
+    habits: Habit[];
+  }): Promise<any> {
+    try {
+      const res = await fetch('/api/ai/health-habit-advice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) throw new Error('Health habit advice request failed');
+      return await res.json();
+    } catch (err) {
+      console.warn('AI Health habit advice network note, using client reasoning:', err);
+      return { fallback: true };
+    }
   }
 };

@@ -150,6 +150,8 @@ function AppContent() {
             setEditingHabit(null);
             setIsNewHabitOpen(true);
           }}
+          onOpenProfileSwitcher={() => setIsProfileSwitcherOpen(true)}
+          onOpenAddProfile={() => setIsAddProfileOpen(true)}
           isOpenMobile={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
         />
