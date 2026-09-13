@@ -239,3 +239,27 @@ export interface SyncQueueItem {
   payload: any;
   timestamp: number;
 }
+
+export type DayHabitStatus = 'completed' | 'missed' | 'pending';
+
+export interface DailyRecord {
+  id: string; // `${userId}_${habitId}_${date}`
+  userId: string;
+  habitId: string;
+  date: string; // YYYY-MM-DD
+  status: DayHabitStatus;
+  completedAt?: string;
+  value?: number;
+  updatedAt: string;
+}
+
+export interface AppSettings {
+  activeProfileId: string;
+  onboardingCompleted: boolean;
+  notificationsEnabled: boolean;
+  reminderTimePreference: string;
+  theme: 'light' | 'dark' | 'system';
+  lastOpenedDate: string;
+  backupLastExported?: string;
+}
+

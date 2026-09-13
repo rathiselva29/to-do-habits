@@ -191,95 +191,110 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setIsPasswordRecoveryMode(true);
     }
 
-    const supabase = getSupabase();
+    const initAuth = async () => {
+      try {
+        // Sync local cache with IndexedDB
+        await StorageService.syncFromIndexedDB();
+        const activeProfile = StorageService.getProfile();
+        const allProfiles = StorageService.getProfiles();
+        setProfiles(allProfiles);
 
-    // 1. SUPABASE AUTH FLOW (Priority)
-    if (supabase && isSupabaseConfigured) {
-      setAuthProviderType('supabase');
+        if (activeProfile && activeProfile.isOnboarded) {
+          setUser(activeProfile);
+        }
+      } catch (e) {
+        console.warn('Initial storage hydration note:', e);
+      }
 
-      // Check current active session
-      supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-        try {
-          if (error) {
-            console.warn('Error fetching Supabase session:', error.message);
+      const supabase = getSupabase();
+
+      // 1. SUPABASE AUTH FLOW (If configured)
+      if (supabase && isSupabaseConfigured) {
+        setAuthProviderType('supabase');
+
+        supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+          try {
+            if (error) {
+              console.warn('Error fetching Supabase session:', error.message);
+            }
+            if (session?.user) {
+              const profile = await syncSupabaseProfile(session.user);
+              setUser(profile);
+            } else {
+              // Retain existing local/onboarded profile
+              const local = StorageService.getProfile();
+              if (local && local.isOnboarded) {
+                setUser(local);
+                setAuthProviderType('demo');
+              }
+            }
+          } catch (e) {
+            console.warn('Supabase session init note:', e);
+          } finally {
+            setIsLoading(false);
           }
-          if (session?.user) {
-            const profile = await syncSupabaseProfile(session.user);
+        });
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+          async (event, session) => {
+            if (event === 'PASSWORD_RECOVERY') {
+              setIsPasswordRecoveryMode(true);
+            }
+
+            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+              if (session?.user) {
+                const profile = await syncSupabaseProfile(session.user);
+                setUser(profile);
+              }
+            } else if (event === 'SIGNED_OUT') {
+              // Don't wipe persistent local profile
+              setIsPasswordRecoveryMode(false);
+            }
+            setIsLoading(false);
+          }
+        );
+
+        return () => {
+          subscription.unsubscribe();
+        };
+      }
+
+      // 2. FIREBASE AUTH FLOW (Fallback when Supabase not configured)
+      setAuthProviderType('firebase');
+      const localProfile = StorageService.getProfile();
+      if (localProfile && localProfile.isOnboarded) {
+        setUser(localProfile);
+        setAuthProviderType('demo');
+        setIsLoading(false);
+        return;
+      }
+
+      const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+        try {
+          if (fbUser) {
+            setFirebaseUser(fbUser);
+            const profile = await syncFirebaseProfile(fbUser);
             setUser(profile);
           } else {
-            const local = StorageService.getProfile();
-            if (local && local.id.startsWith('demo-guest-')) {
-              setUser(local);
-              setAuthProviderType('demo');
-            } else {
-              setUser(null);
+            setFirebaseUser(null);
+            const currentLocal = StorageService.getProfile();
+            if (currentLocal && currentLocal.isOnboarded) {
+              setUser(currentLocal);
             }
           }
-        } catch (e) {
-          console.warn('Supabase session init note:', e);
+        } catch (err) {
+          console.warn('Firebase auth state note:', err);
         } finally {
           setIsLoading(false);
         }
       });
 
-      // Subscribe to Supabase Auth state transitions
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          if (event === 'PASSWORD_RECOVERY') {
-            setIsPasswordRecoveryMode(true);
-          }
-
-          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-            if (session?.user) {
-              const profile = await syncSupabaseProfile(session.user);
-              setUser(profile);
-            }
-          } else if (event === 'SIGNED_OUT') {
-            setUser(null);
-            StorageService.resetAllData();
-            setIsPasswordRecoveryMode(false);
-          }
-          setIsLoading(false);
-        }
-      );
-
       return () => {
-        subscription.unsubscribe();
+        unsubscribe();
       };
-    }
+    };
 
-    // 2. FIREBASE AUTH FLOW (Fallback when Supabase URL/key not supplied in environment)
-    setAuthProviderType('firebase');
-    const localProfile = StorageService.getProfile();
-    if (localProfile && localProfile.id.startsWith('demo-guest-')) {
-      setUser(localProfile);
-      setAuthProviderType('demo');
-      setIsLoading(false);
-      return;
-    }
-
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      try {
-        if (fbUser) {
-          setFirebaseUser(fbUser);
-          const profile = await syncFirebaseProfile(fbUser);
-          setUser(profile);
-        } else {
-          setFirebaseUser(null);
-          const currentLocal = StorageService.getProfile();
-          if (!currentLocal?.id.startsWith('demo-guest-')) {
-            setUser(null);
-            StorageService.resetAllData();
-          }
-        }
-      } catch (err) {
-        console.warn('Firebase auth state note:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    });
-
-    return () => unsubscribe();
+    initAuth();
   }, []);
 
   // 1. Email + Password Sign In

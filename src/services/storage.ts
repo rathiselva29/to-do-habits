@@ -11,11 +11,13 @@ import {
   WellnessScoreBreakdown,
   SyncQueueItem
 } from '../types';
+import { IndexedDBService } from './db';
 
 const STORAGE_KEYS = {
   USER_PROFILE: 'todo_habits_user_profile',
   PROFILES_LIST: 'todo_habits_profiles_list',
   ACTIVE_PROFILE_ID: 'todo_habits_active_profile_id',
+  ONBOARDING_COMPLETED: 'todo_habits_onboarding_completed',
   AUTH_TOKEN: 'todo_habits_auth_token',
   HABITS: 'todo_habits_items',
   COMPLETIONS: 'todo_habits_completions',
@@ -157,8 +159,61 @@ export const INITIAL_AI_INSIGHT: AIInsight = {
   generatedAt: new Date().toISOString(),
 };
 
-// Storage Service API
+// Storage Service API with Dual Persistence (Instant LocalStorage + Durable IndexedDB)
 export const StorageService = {
+  // Onboarding Status Persistence
+  isOnboardingCompleted(): boolean {
+    const raw = localStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETED);
+    if (raw === 'true') return true;
+    const profile = this.getProfile();
+    return !!profile?.isOnboarded;
+  },
+
+  setOnboardingCompleted(val: boolean): void {
+    localStorage.setItem(STORAGE_KEYS.ONBOARDING_COMPLETED, val ? 'true' : 'false');
+    IndexedDBService.setSetting('onboarding_completed', val).catch(() => {});
+  },
+
+  // Hydrate local cache from IndexedDB on boot
+  async syncFromIndexedDB(): Promise<void> {
+    try {
+      const dbProfiles = await IndexedDBService.getAllProfiles();
+      if (dbProfiles && dbProfiles.length > 0) {
+        const localProfiles = this.getProfiles();
+        if (localProfiles.length === 0) {
+          this.saveProfiles(dbProfiles);
+          const active = dbProfiles.find(p => p.isOnboarded) || dbProfiles[0];
+          if (active) {
+            this.setActiveProfileId(active.id);
+            if (active.isOnboarded) {
+              this.setOnboardingCompleted(true);
+            }
+          }
+        }
+      }
+
+      // Also persist local profiles to IndexedDB if IDB was empty
+      const localProfiles = this.getProfiles();
+      if (localProfiles.length > 0) {
+        await IndexedDBService.saveProfiles(localProfiles);
+      }
+
+      // Sync habits
+      const allHabits = this.getAllHabits();
+      if (allHabits.length > 0) {
+        await IndexedDBService.saveHabits(allHabits);
+      }
+
+      // Sync completions
+      const allComps = this.getAllCompletions();
+      if (allComps.length > 0) {
+        await IndexedDBService.saveCompletions(allComps);
+      }
+    } catch (e) {
+      console.warn('StorageService: IndexedDB sync note', e);
+    }
+  },
+
   getProfiles(): UserProfile[] {
     const raw = localStorage.getItem(STORAGE_KEYS.PROFILES_LIST);
     if (!raw) {
@@ -179,6 +234,7 @@ export const StorageService = {
 
   saveProfiles(profiles: UserProfile[]): void {
     localStorage.setItem(STORAGE_KEYS.PROFILES_LIST, JSON.stringify(profiles));
+    IndexedDBService.saveProfiles(profiles).catch(() => {});
   },
 
   getActiveProfileId(): string | null {
@@ -187,6 +243,7 @@ export const StorageService = {
 
   setActiveProfileId(id: string): void {
     localStorage.setItem(STORAGE_KEYS.ACTIVE_PROFILE_ID, id);
+    IndexedDBService.setSetting('active_profile_id', id).catch(() => {});
     const profiles = this.getProfiles();
     const active = profiles.find(p => p.id === id);
     if (active) {
@@ -228,12 +285,17 @@ export const StorageService = {
     }
     this.saveProfiles(profiles);
     localStorage.setItem(STORAGE_KEYS.ACTIVE_PROFILE_ID, profile.id);
+    if (profile.isOnboarded) {
+      this.setOnboardingCompleted(true);
+    }
+    IndexedDBService.saveProfile(profile).catch(() => {});
   },
 
   deleteProfile(profileId: string): UserProfile | null {
     let profiles = this.getProfiles();
     profiles = profiles.filter(p => p.id !== profileId);
     this.saveProfiles(profiles);
+    IndexedDBService.deleteProfile(profileId).catch(() => {});
 
     // Remove habit/completions/moods/metrics for this profile
     const allHabits = this.getAllHabits().filter(h => h.userId !== profileId);
@@ -287,6 +349,7 @@ export const StorageService = {
 
   saveHabits(habits: Habit[]): void {
     localStorage.setItem(STORAGE_KEYS.HABITS, JSON.stringify(habits));
+    IndexedDBService.saveHabits(habits).catch(() => {});
   },
 
   saveHabitsForUser(userId: string, userHabits: Habit[]): void {
@@ -320,6 +383,7 @@ export const StorageService = {
 
   saveCompletions(completions: HabitCompletion[]): void {
     localStorage.setItem(STORAGE_KEYS.COMPLETIONS, JSON.stringify(completions));
+    IndexedDBService.saveCompletions(completions).catch(() => {});
   },
 
   saveCompletionsForUser(userId: string, userCompletions: HabitCompletion[]): void {
@@ -353,6 +417,7 @@ export const StorageService = {
 
   saveMoods(moods: MoodEntry[]): void {
     localStorage.setItem(STORAGE_KEYS.MOODS, JSON.stringify(moods));
+    IndexedDBService.saveMoods(moods).catch(() => {});
   },
 
   saveMoodsForUser(userId: string, userMoods: MoodEntry[]): void {
@@ -386,6 +451,7 @@ export const StorageService = {
 
   saveHealthMetrics(metrics: HealthMetric[]): void {
     localStorage.setItem(STORAGE_KEYS.HEALTH_METRICS, JSON.stringify(metrics));
+    IndexedDBService.saveHealthMetrics(metrics).catch(() => {});
   },
 
   saveHealthMetricsForUser(userId: string, userMetrics: HealthMetric[]): void {

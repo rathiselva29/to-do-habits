@@ -8,7 +8,8 @@ import {
   AICoachMessage, 
   AIInsight,
   WellnessScoreBreakdown,
-  SyncQueueItem
+  SyncQueueItem,
+  DailyRecord
 } from '../types';
 import { 
   StorageService, 
@@ -16,6 +17,7 @@ import {
   calculateHabitStreaks, 
   calculateWellnessScore 
 } from '../services/storage';
+import { IndexedDBService } from '../services/db';
 import { ApiService } from '../services/api';
 import { SupabaseDataService } from '../services/supabaseData';
 import { FirestoreDataService } from '../services/firestoreData';
@@ -28,6 +30,7 @@ import confetti from 'canvas-confetti';
 interface AppContextType {
   habits: Habit[];
   completions: HabitCompletion[];
+  dailyRecords: DailyRecord[];
   moodEntries: MoodEntry[];
   healthMetrics: HealthMetric[];
   notificationSettings: NotificationSettings;
@@ -49,6 +52,7 @@ interface AppContextType {
   toggleHabitArchive: (id: string) => void;
   toggleHabitPause: (id: string) => void;
   dismissReminder: () => void;
+  reconcileHabits: () => Promise<void>;
   
   // Mood
   logMood: (score: 1 | 2 | 3 | 4 | 5, emotions: any[], notes?: string, date?: string) => void;
@@ -61,11 +65,13 @@ interface AppContextType {
   refreshAIInsights: () => Promise<void>;
   clearAIConversation: () => void;
 
-  // Settings & Theme
+  // Settings & Theme & Backup
   updateNotificationSettings: (settings: Partial<NotificationSettings>) => void;
   setTheme: (theme: 'light' | 'dark') => void;
   triggerManualSync: () => Promise<void>;
   clearCelebration: () => void;
+  exportBackupJSON: () => Promise<string>;
+  importBackupJSON: (jsonString: string) => Promise<{ success: boolean; message: string }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -74,6 +80,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const { user, firebaseUser } = useAuth();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<HabitCompletion[]>([]);
+  const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>([]);
   const [moodEntries, setMoodEntries] = useState<MoodEntry[]>([]);
   const [healthMetrics, setHealthMetrics] = useState<HealthMetric[]>([]);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(StorageService.getNotificationSettings());
@@ -174,6 +181,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAiMessages(StorageService.getAIMessages());
     setAiInsight(StorageService.getAIInsight());
     setSyncQueue(StorageService.getSyncQueue());
+
+    // Automatically reconcile missed days across past dates in IndexedDB
+    IndexedDBService.reconcileMissedDays(currentUserId, updatedHabits, localCompletions)
+      .then(({ updatedHabits: reconciledHabits, newDailyRecords }) => {
+        setHabits(reconciledHabits);
+        StorageService.saveHabitsForUser(currentUserId, reconciledHabits);
+        setDailyRecords(newDailyRecords);
+      })
+      .catch((err) => {
+        console.warn('IDB reconciliation note:', err);
+      });
 
     // 1. SUPABASE DATA FETCH & REALTIME SUBSCRIPTION
     const supabase = getSupabase();
@@ -433,6 +451,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     StorageService.saveHabitsForUser(currentUserId, updatedHabits);
     setHabits(updatedHabits);
+
+    // Update DailyRecord in IndexedDB
+    const todayStr = getTodayDateString();
+    const recordId = `${currentUserId}_${habitId}_${dateStr}`;
+    const newDailyRecord: DailyRecord = {
+      id: recordId,
+      userId: currentUserId,
+      habitId,
+      date: dateStr,
+      status: isCompletedNow ? 'completed' : (dateStr < todayStr ? 'missed' : 'pending'),
+      completedAt: isCompletedNow ? new Date().toISOString() : undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    IndexedDBService.saveDailyRecord(newDailyRecord).catch(() => {});
+    setDailyRecords(prev => {
+      const filtered = prev.filter(r => r.id !== recordId);
+      return [...filtered, newDailyRecord];
+    });
 
     // Check if all active habits for today are now completed
     const activeHabitsToday = updatedHabits.filter(h => !h.isArchived && !h.isPaused);
@@ -727,6 +763,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCelebrationEvent(null);
   };
 
+  const reconcileHabits = async () => {
+    if (!user?.id) return;
+    const currentUserId = user.id;
+    const currentHabits = StorageService.getHabits(currentUserId);
+    const currentComps = StorageService.getCompletions(currentUserId);
+    try {
+      const result = await IndexedDBService.reconcileMissedDays(currentUserId, currentHabits, currentComps);
+      setHabits(result.updatedHabits);
+      StorageService.saveHabitsForUser(currentUserId, result.updatedHabits);
+      setDailyRecords(result.newDailyRecords);
+    } catch (e) {
+      console.warn('Reconcile error:', e);
+    }
+  };
+
+  const exportBackupJSON = async (): Promise<string> => {
+    return await IndexedDBService.exportAllDataJSON();
+  };
+
+  const importBackupJSON = async (jsonString: string): Promise<{ success: boolean; message: string }> => {
+    const result = await IndexedDBService.importAllDataJSON(jsonString);
+    if (result.success && user?.id) {
+      await StorageService.syncFromIndexedDB();
+      await reconcileHabits();
+    }
+    return result;
+  };
+
   const wellnessScore = calculateWellnessScore(habits, completions, moodEntries, healthMetrics);
 
   return (
@@ -734,6 +798,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       value={{
         habits,
         completions,
+        dailyRecords,
         moodEntries,
         healthMetrics,
         notificationSettings,
@@ -747,6 +812,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         celebrationEvent,
         activeReminderNotification,
         dismissReminder,
+        reconcileHabits,
         toggleHabitCompletion,
         createHabit,
         updateHabit,
@@ -762,6 +828,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setTheme,
         triggerManualSync,
         clearCelebration,
+        exportBackupJSON,
+        importBackupJSON,
       }}
     >
       {children}

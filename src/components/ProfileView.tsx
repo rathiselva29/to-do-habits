@@ -19,7 +19,8 @@ import {
   AlertTriangle,
   Check,
   Plus,
-  Users
+  Users,
+  Upload
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -56,8 +57,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     habits, 
     completions, 
     moodEntries, 
-    healthMetrics 
+    healthMetrics,
+    exportBackupJSON,
+    importBackupJSON,
   } = useApp();
+
+  const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState(user?.name || 'Alex Rivera');
   const [email, setEmail] = useState(user?.email || 'alex.rivera@example.com');
@@ -93,6 +99,43 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
+  };
+
+  const handleExportFullBackup = async () => {
+    try {
+      const jsonStr = await exportBackupJSON();
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `todo-habits-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setBackupMessage({ type: 'success', text: 'Complete IndexedDB backup downloaded!' });
+      setTimeout(() => setBackupMessage(null), 3500);
+    } catch (err: any) {
+      setBackupMessage({ type: 'error', text: err?.message || 'Failed to export backup' });
+      setTimeout(() => setBackupMessage(null), 3500);
+    }
+  };
+
+  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const res = await importBackupJSON(text);
+      if (res.success) {
+        setBackupMessage({ type: 'success', text: res.message });
+      } else {
+        setBackupMessage({ type: 'error', text: res.message });
+      }
+      setTimeout(() => setBackupMessage(null), 4500);
+    } catch (err: any) {
+      setBackupMessage({ type: 'error', text: 'Invalid JSON backup: ' + err.message });
+      setTimeout(() => setBackupMessage(null), 4500);
+    }
+    e.target.value = '';
   };
 
   // JSON Data Export
@@ -586,26 +629,74 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             )}
           </div>
 
-          {/* Data Export Card */}
+          {/* Data Export & Backup Card */}
           <div className="p-6 rounded-3xl glass-card shadow-lg space-y-4">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white pb-2 border-b border-white/50 dark:border-white/10">
-              Data & Backup
+              Persistent Backup & Data
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Your habit history belongs to you. Download or backup your data anytime.
+              Your habit history, streaks, and settings are stored locally in IndexedDB. Backup or restore anytime.
             </p>
+
+            {backupMessage && (
+              <div
+                className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                  backupMessage.type === 'success'
+                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                    : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30'
+                }`}
+              >
+                {backupMessage.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+                )}
+                <span>{backupMessage.text}</span>
+              </div>
+            )}
+
+            {/* Hidden file input for restore */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleImportFileChange}
+              className="hidden"
+            />
 
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={handleExportJSON}
+                onClick={handleExportFullBackup}
                 className="w-full flex items-center justify-between p-3 rounded-2xl glass-subcard hover:border-indigo-400 transition-colors text-left cursor-pointer"
               >
                 <div className="flex items-center gap-2.5">
                   <FileText className="w-4 h-4 text-indigo-500" />
-                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Export JSON Backup</span>
+                  <div>
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
+                      Export Full Backup (JSON)
+                    </span>
+                    <span className="text-[10px] text-slate-400">Includes habits, streaks, history, & profiles</span>
+                  </div>
                 </div>
-                <Download className="w-3.5 h-3.5 text-slate-400" />
+                <Download className="w-4 h-4 text-indigo-500" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full flex items-center justify-between p-3 rounded-2xl glass-subcard hover:border-indigo-400 transition-colors text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Upload className="w-4 h-4 text-teal-500" />
+                  <div>
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
+                      Restore from Backup (JSON)
+                    </span>
+                    <span className="text-[10px] text-slate-400">Load previous habits & data from file</span>
+                  </div>
+                </div>
+                <Upload className="w-4 h-4 text-teal-500" />
               </button>
 
               <button
@@ -614,10 +705,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 className="w-full flex items-center justify-between p-3 rounded-2xl glass-subcard hover:border-indigo-400 transition-colors text-left cursor-pointer"
               >
                 <div className="flex items-center gap-2.5">
-                  <FileSpreadsheet className="w-4 h-4 text-teal-500" />
-                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Export CSV Data</span>
+                  <FileSpreadsheet className="w-4 h-4 text-amber-500" />
+                  <div>
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
+                      Export CSV Spreadsheet
+                    </span>
+                    <span className="text-[10px] text-slate-400">For Excel, Numbers, or Google Sheets</span>
+                  </div>
                 </div>
-                <Download className="w-3.5 h-3.5 text-slate-400" />
+                <Download className="w-4 h-4 text-amber-500" />
               </button>
             </div>
           </div>

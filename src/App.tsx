@@ -71,52 +71,16 @@ function AppContent() {
     return <ResetPasswordView />;
   }
 
-  // 3. User is NOT onboarded yet (Fresh Start Flow: Splash -> Onboarding Steps 1, 2, 3)
+  // 3. First Launch: User is NOT onboarded yet (Onboarding 1 -> 2 -> 3 -> Create Profile -> Start App)
   if (!user || !user.isOnboarded) {
-    if (showAuthDirect) {
-      return (
-        <RootAuthView
-          initialMode={authInitialMode}
-          onBackToSplash={() => {
-            setShowAuthDirect(false);
-            setShowSplash(true);
+    return (
+      <div className="min-h-screen frosted-bg flex flex-col items-center justify-center p-4 sm:p-6 transition-colors duration-300">
+        <OnboardingModal
+          onComplete={() => {
+            setShowOnboardingDirect(false);
           }}
         />
-      );
-    }
-
-    if (showOnboardingDirect) {
-      return (
-        <div className="min-h-screen frosted-bg flex flex-col items-center justify-center p-4 sm:p-6">
-          <OnboardingModal
-            onBackToSplash={() => {
-              setShowOnboardingDirect(false);
-              setShowSplash(true);
-            }}
-            onComplete={() => {
-              setShowOnboardingDirect(false);
-            }}
-          />
-        </div>
-      );
-    }
-
-    // Default entry: Splash Screen
-    return (
-      <SplashView
-        onGetStarted={() => {
-          setShowSplash(false);
-          setShowOnboardingDirect(true);
-        }}
-        onSignIn={() => {
-          setAuthInitialMode('login');
-          setShowSplash(false);
-          setShowAuthDirect(true);
-        }}
-        onQuickDemo={() => {
-          loginAsGuestDemo();
-        }}
-      />
+      </div>
     );
   }
 

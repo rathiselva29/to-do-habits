@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "To-Do-Habits",
+  "short_name": "Habits",
+  "description": "Persistent offline-first habit and routine tracking with daily history, missed days tracking, and streak monitoring.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#060913",
+  "theme_color": "#4f46e5",
+  "categories": ["lifestyle", "health", "productivity"],
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
