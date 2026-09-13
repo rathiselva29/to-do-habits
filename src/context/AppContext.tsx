@@ -65,8 +65,12 @@ interface AppContextType {
   refreshAIInsights: () => Promise<void>;
   clearAIConversation: () => void;
 
+  todayUnfinishedHabitsCount: number;
+  requestNotificationPermission: () => Promise<'granted' | 'denied' | 'default'>;
+  sendTestNotification: () => Promise<{ success: boolean; message: string }>;
+
   // Settings & Theme & Backup
-  updateNotificationSettings: (settings: Partial<NotificationSettings>) => void;
+  updateNotificationSettings: (settings: Partial<NotificationSettings>) => Promise<boolean>;
   setTheme: (theme: 'light' | 'dark') => void;
   triggerManualSync: () => Promise<void>;
   clearCelebration: () => void;
@@ -99,46 +103,92 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     reminderTime?: string;
   } | null>(null);
 
-  // Periodic on-time habit reminder check
+  // Helper to determine if a habit is scheduled for a given date
+  const isHabitDueOnDate = (h: Habit, dateStr: string): boolean => {
+    if (h.isArchived || h.isPaused) return false;
+    if (!h.frequency || h.frequency === 'daily') return true;
+    const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
+    if (h.frequency === 'weekdays') {
+      return dayOfWeek >= 1 && dayOfWeek <= 5;
+    }
+    if (h.frequency === 'custom' && Array.isArray(h.customDays) && h.customDays.length > 0) {
+      return h.customDays.includes(dayOfWeek);
+    }
+    return true;
+  };
+
+  const todayDateStr = getTodayDateString();
+  const habitsDueTodayList = habits.filter(h => isHabitDueOnDate(h, todayDateStr));
+  const completedTodayIdsSet = new Set(
+    completions.filter(c => c.date === todayDateStr).map(c => c.habitId)
+  );
+  const todayUnfinishedHabitsList = habitsDueTodayList.filter(h => !completedTodayIdsSet.has(h.id));
+  const todayUnfinishedHabitsCount = todayUnfinishedHabitsList.length;
+
+  // Periodic real daily habit reminder & on-time reminder engine
   useEffect(() => {
     if (!user || habits.length === 0) return;
 
-    const checkReminders = () => {
+    const checkReminders = async () => {
+      // If notifications are disabled globally, skip
+      if (!notificationSettings.enabled) return;
+      if (NotificationService.getPermissionStatus() !== 'granted') return;
+
       const now = new Date();
       const currentHour = String(now.getHours()).padStart(2, '0');
       const currentMin = String(now.getMinutes()).padStart(2, '0');
       const currentTime24 = `${currentHour}:${currentMin}`;
       const today = getTodayDateString();
-      const completedTodayIds = new Set(completions.filter(c => c.date === today).map(c => c.habitId));
 
-      for (const habit of habits) {
-        if (habit.isArchived || habit.isPaused) continue;
-        if (completedTodayIds.has(habit.id)) continue;
+      const activeDueToday = habits.filter(h => isHabitDueOnDate(h, today));
+      const doneTodayIds = new Set(
+        completions.filter(c => c.date === today).map(c => c.habitId)
+      );
 
-        if (habit.reminderTime === currentTime24) {
-          if (!NotificationService.hasFiredThisMinute(`habit_${habit.id}`)) {
-            const time12 = formatTimeTo12Hour(habit.reminderTime);
-            const title = `Routine Reminder: ${habit.name}`;
-            const body = `It's ${time12}! Time for your ${habit.category} routine.`;
+      // 1. Daily Unfinished Habit Reminder (at notificationSettings.reminderTime)
+      if (notificationSettings.dailyUnfinishedReminder !== false) {
+        if (currentTime24 === notificationSettings.reminderTime) {
+          const reminderKey = `daily_reminder_${user.id}_${today}_${notificationSettings.reminderTime}`;
+          if (localStorage.getItem(reminderKey) !== 'true') {
+            const unfinished = activeDueToday.filter(h => !doneTodayIds.has(h.id));
+            if (unfinished.length > 0) {
+              await NotificationService.sendDailyUnfinishedReminder(
+                unfinished.length,
+                notificationSettings.reminderTime,
+                unfinished.map(h => h.name)
+              );
+              localStorage.setItem(reminderKey, 'true');
+            } else {
+              // IMPORTANT: Do NOT notify the user about habits that are already completed.
+              localStorage.setItem(reminderKey, 'true');
+            }
+          }
+        }
+      }
 
-            NotificationService.triggerNotification(title, body);
-            setActiveReminderNotification({
-              id: `reminder-${habit.id}-${Date.now()}`,
-              title,
-              body,
-              habitId: habit.id,
-              reminderTime: habit.reminderTime,
-            });
-            break;
+      // 2. Individual On-Time Habit Reminders (if habitsEnabled is true)
+      if (notificationSettings.habitsEnabled) {
+        for (const habit of activeDueToday) {
+          if (doneTodayIds.has(habit.id)) continue;
+          if (habit.reminderTime === currentTime24) {
+            if (!NotificationService.hasFiredThisMinute(`habit_${habit.id}`)) {
+              const time12 = formatTimeTo12Hour(habit.reminderTime);
+              const title = `Routine Reminder: ${habit.name}`;
+              const body = `It's ${time12}! Time for your ${habit.category} routine.`;
+              await NotificationService.triggerNotification(title, body, {
+                tag: `routine-${habit.id}-${today}`,
+              });
+              break;
+            }
           }
         }
       }
     };
 
     checkReminders();
-    const interval = setInterval(checkReminders, 25000);
+    const interval = setInterval(checkReminders, 15000);
     return () => clearInterval(interval);
-  }, [habits, completions, user]);
+  }, [habits, completions, user, notificationSettings]);
 
   const dismissReminder = () => {
     setActiveReminderNotification(null);

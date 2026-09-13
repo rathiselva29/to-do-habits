@@ -126,15 +126,20 @@ export function generateInitialHealthMetrics(): HealthMetric[] {
 }
 
 export const INITIAL_NOTIFICATIONS: NotificationSettings = {
+  enabled: true,
+  reminderTime: '08:00',
   habitsEnabled: true,
+  dailyUnfinishedReminder: true,
+  soundEnabled: true,
   waterReminders: true,
   sleepReminders: true,
   moodReminders: true,
   dailyReview: true,
-  quietHoursEnabled: true,
+  quietHoursEnabled: false,
   quietHoursStart: '22:30',
   quietHoursEnd: '07:00',
-  browserPermission: 'default',
+  browserPermission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default',
+  lastNotifiedDate: '',
 };
 
 export const INITIAL_AI_MESSAGES: AICoachMessage[] = [
@@ -527,7 +532,12 @@ export const StorageService = {
       return INITIAL_NOTIFICATIONS;
     }
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return {
+        ...INITIAL_NOTIFICATIONS,
+        ...parsed,
+        browserPermission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : (parsed.browserPermission || 'default'),
+      };
     } catch {
       return INITIAL_NOTIFICATIONS;
     }

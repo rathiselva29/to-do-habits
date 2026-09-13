@@ -190,15 +190,22 @@ export interface HealthHabitRoutineAdvice {
 }
 
 export interface NotificationSettings {
-  habitsEnabled: boolean;
-  waterReminders: boolean;
-  sleepReminders: boolean;
-  moodReminders: boolean;
-  dailyReview: boolean;
+  enabled: boolean; // Master toggle for real system/browser habit notifications
+  reminderTime: string; // Time in 24h format e.g. "08:00"
+  habitsEnabled: boolean; // Individual habit scheduled time reminders
+  dailyUnfinishedReminder: boolean; // Daily reminder for unfinished habits at reminderTime
+  soundEnabled: boolean; // Celebratory/reminder audio bell
   quietHoursEnabled: boolean;
   quietHoursStart: string; // e.g. "22:00"
   quietHoursEnd: string; // e.g. "07:00"
   browserPermission: 'default' | 'granted' | 'denied';
+  lastNotifiedDate?: string; // e.g. "2026-09-13" to prevent duplicate daily alerts
+  waterReminders?: boolean;
+  sleepReminders?: boolean;
+  moodReminders?: boolean;
+  dailyReview?: boolean;
+  dailyBriefing?: boolean;
+  eveningReflection?: boolean;
 }
 
 export interface AICoachMessage {

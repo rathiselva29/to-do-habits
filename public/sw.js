@@ -126,3 +126,47 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+// PostMessage handler from main thread to show real notifications
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    const { title, body, options } = event.data;
+    event.waitUntil(
+      self.registration.showNotification(title, {
+        body,
+        icon: options?.icon || '/pwa-192x192.png',
+        badge: options?.badge || '/pwa-192x192.png',
+        tag: options?.tag || 'daily-habit-reminder',
+        renotify: true,
+        vibrate: [200, 100, 200],
+        data: options?.data || { url: '/' },
+      })
+    );
+  }
+});
+
+// Web Push handler for background notifications
+self.addEventListener('push', (event) => {
+  let data = {
+    title: 'Good morning!',
+    body: 'You have habits to complete today.',
+  };
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data = { title: 'Habit Reminder', body: event.data.text() };
+    }
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Habit Reminder', {
+      body: data.body || 'You have habits to complete today.',
+      icon: '/pwa-192x192.png',
+      badge: '/pwa-192x192.png',
+      tag: data.tag || 'daily-habit-reminder',
+      renotify: true,
+      vibrate: [200, 100, 200],
+      data: { url: '/' },
+    })
+  );
+});
