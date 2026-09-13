@@ -177,12 +177,23 @@ export const StorageService = {
   // Hydrate local cache from IndexedDB on boot
   async syncFromIndexedDB(): Promise<void> {
     try {
+      // 1. PROFILES
       const dbProfiles = await IndexedDBService.getAllProfiles();
+      const localProfiles = this.getProfiles();
+
       if (dbProfiles && dbProfiles.length > 0) {
-        const localProfiles = this.getProfiles();
-        if (localProfiles.length === 0) {
-          this.saveProfiles(dbProfiles);
-          const active = dbProfiles.find(p => p.isOnboarded) || dbProfiles[0];
+        // Merge profiles by ID
+        const profileMap = new Map<string, UserProfile>();
+        for (const p of dbProfiles) profileMap.set(p.id, p);
+        for (const p of localProfiles) {
+          if (!profileMap.has(p.id)) profileMap.set(p.id, p);
+        }
+        const mergedProfiles = Array.from(profileMap.values());
+        localStorage.setItem(STORAGE_KEYS.PROFILES_LIST, JSON.stringify(mergedProfiles));
+
+        let activeId = this.getActiveProfileId();
+        if (!activeId || !profileMap.has(activeId)) {
+          const active = mergedProfiles.find(p => p.isOnboarded) || mergedProfiles[0];
           if (active) {
             this.setActiveProfileId(active.id);
             if (active.isOnboarded) {
@@ -190,24 +201,72 @@ export const StorageService = {
             }
           }
         }
-      }
-
-      // Also persist local profiles to IndexedDB if IDB was empty
-      const localProfiles = this.getProfiles();
-      if (localProfiles.length > 0) {
+      } else if (localProfiles.length > 0) {
         await IndexedDBService.saveProfiles(localProfiles);
       }
 
-      // Sync habits
-      const allHabits = this.getAllHabits();
-      if (allHabits.length > 0) {
-        await IndexedDBService.saveHabits(allHabits);
+      // 2. HABITS
+      const dbHabits = await IndexedDBService.getAllHabits();
+      const localHabits = this.getAllHabits();
+      if (dbHabits && dbHabits.length > 0) {
+        const habitMap = new Map<string, Habit>();
+        for (const h of dbHabits) habitMap.set(h.id, h);
+        for (const h of localHabits) {
+          if (!habitMap.has(h.id)) habitMap.set(h.id, h);
+        }
+        const mergedHabits = Array.from(habitMap.values());
+        localStorage.setItem(STORAGE_KEYS.HABITS, JSON.stringify(mergedHabits));
+        await IndexedDBService.saveHabits(mergedHabits);
+      } else if (localHabits.length > 0) {
+        await IndexedDBService.saveHabits(localHabits);
       }
 
-      // Sync completions
-      const allComps = this.getAllCompletions();
-      if (allComps.length > 0) {
-        await IndexedDBService.saveCompletions(allComps);
+      // 3. COMPLETIONS
+      const dbCompletions = await IndexedDBService.getAllCompletions();
+      const localCompletions = this.getAllCompletions();
+      if (dbCompletions && dbCompletions.length > 0) {
+        const compMap = new Map<string, HabitCompletion>();
+        for (const c of dbCompletions) compMap.set(c.id, c);
+        for (const c of localCompletions) {
+          if (!compMap.has(c.id)) compMap.set(c.id, c);
+        }
+        const mergedCompletions = Array.from(compMap.values());
+        localStorage.setItem(STORAGE_KEYS.COMPLETIONS, JSON.stringify(mergedCompletions));
+        await IndexedDBService.saveCompletions(mergedCompletions);
+      } else if (localCompletions.length > 0) {
+        await IndexedDBService.saveCompletions(localCompletions);
+      }
+
+      // 4. MOODS
+      const dbMoods = await IndexedDBService.getAllMoods();
+      const localMoods = this.getAllMoods();
+      if (dbMoods && dbMoods.length > 0) {
+        const moodMap = new Map<string, MoodEntry>();
+        for (const m of dbMoods) moodMap.set(m.id, m);
+        for (const m of localMoods) {
+          if (!moodMap.has(m.id)) moodMap.set(m.id, m);
+        }
+        const mergedMoods = Array.from(moodMap.values());
+        localStorage.setItem(STORAGE_KEYS.MOODS, JSON.stringify(mergedMoods));
+        await IndexedDBService.saveMoods(mergedMoods);
+      } else if (localMoods.length > 0) {
+        await IndexedDBService.saveMoods(localMoods);
+      }
+
+      // 5. HEALTH METRICS
+      const dbMetrics = await IndexedDBService.getAllHealthMetrics();
+      const localMetrics = this.getAllHealthMetrics();
+      if (dbMetrics && dbMetrics.length > 0) {
+        const metricMap = new Map<string, HealthMetric>();
+        for (const m of dbMetrics) metricMap.set(m.id, m);
+        for (const m of localMetrics) {
+          if (!metricMap.has(m.id)) metricMap.set(m.id, m);
+        }
+        const mergedMetrics = Array.from(metricMap.values());
+        localStorage.setItem(STORAGE_KEYS.HEALTH_METRICS, JSON.stringify(mergedMetrics));
+        await IndexedDBService.saveHealthMetrics(mergedMetrics);
+      } else if (localMetrics.length > 0) {
+        await IndexedDBService.saveHealthMetrics(localMetrics);
       }
     } catch (e) {
       console.warn('StorageService: IndexedDB sync note', e);

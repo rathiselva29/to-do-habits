@@ -382,6 +382,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         payload: { habitId, date: dateStr },
       });
       if (existingComp?.id) {
+        IndexedDBService.deleteCompletion(existingComp.id).catch(() => {});
         const supabase = getSupabase();
         if (supabase && isSupabaseConfigured) {
           SupabaseDataService.deleteCompletion(existingComp.id, currentUserId);
@@ -544,6 +545,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updatedCompletions = completions.filter(c => c.habitId !== id);
     StorageService.saveHabitsForUser(currentUserId, updated);
     StorageService.saveCompletionsForUser(currentUserId, updatedCompletions);
+    IndexedDBService.deleteHabit(id).catch(() => {});
+    for (const comp of completions.filter(c => c.habitId === id)) {
+      IndexedDBService.deleteCompletion(comp.id).catch(() => {});
+    }
     setHabits(updated);
     setCompletions(updatedCompletions);
 

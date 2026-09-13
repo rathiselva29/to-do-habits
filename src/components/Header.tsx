@@ -16,6 +16,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Logo } from './Logo';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   onOpenAuth: () => void;
@@ -68,6 +69,9 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right Tools & Profile */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* In-app PWA install trigger */}
+          <PWAInstallButton compact={true} />
+
           {/* Active Streak Badge */}
           <div 
             onClick={() => setActiveTab('habits')}

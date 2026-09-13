@@ -185,6 +185,16 @@ export class IndexedDBService {
   }
 
   // HABITS
+  static async getAllHabits(): Promise<Habit[]> {
+    try {
+      const db = await getDB();
+      return await db.getAll('habits');
+    } catch (e) {
+      console.warn('IDB: Failed to get all habits', e);
+      return [];
+    }
+  }
+
   static async getHabits(userId: string): Promise<Habit[]> {
     try {
       const db = await getDB();
@@ -227,6 +237,16 @@ export class IndexedDBService {
   }
 
   // COMPLETIONS
+  static async getAllCompletions(): Promise<HabitCompletion[]> {
+    try {
+      const db = await getDB();
+      return await db.getAll('completions');
+    } catch (e) {
+      console.warn('IDB: Failed to get all completions', e);
+      return [];
+    }
+  }
+
   static async getCompletions(userId: string): Promise<HabitCompletion[]> {
     try {
       const db = await getDB();
@@ -302,6 +322,16 @@ export class IndexedDBService {
   }
 
   // MOODS
+  static async getAllMoods(): Promise<MoodEntry[]> {
+    try {
+      const db = await getDB();
+      return await db.getAll('moods');
+    } catch (e) {
+      console.warn('IDB: Failed to get all moods', e);
+      return [];
+    }
+  }
+
   static async getMoods(userId: string): Promise<MoodEntry[]> {
     try {
       const db = await getDB();
@@ -335,6 +365,16 @@ export class IndexedDBService {
   }
 
   // HEALTH METRICS
+  static async getAllHealthMetrics(): Promise<HealthMetric[]> {
+    try {
+      const db = await getDB();
+      return await db.getAll('health_metrics');
+    } catch (e) {
+      console.warn('IDB: Failed to get all health metrics', e);
+      return [];
+    }
+  }
+
   static async getHealthMetrics(userId: string): Promise<HealthMetric[]> {
     try {
       const db = await getDB();
