@@ -694,7 +694,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 onClick={() => setActiveTab('coach')}
                 className="flex-1 py-2 px-3 rounded-xl ai-gradient text-white text-xs font-semibold shadow-md shadow-indigo-500/20 flex items-center justify-center gap-1.5 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
               >
-                <span>Chat with Coach</span>
+                <span>Ask AI Coach</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>

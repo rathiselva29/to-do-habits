@@ -27,6 +27,7 @@ import { useApp } from '../context/AppContext';
 import { StorageService } from '../services/storage';
 import { TimePicker12 } from './TimePicker12';
 import { NotificationService } from '../services/notifications';
+import { Habit } from '../types';
 
 interface ProfileViewProps {
   onOpenAuth: () => void;
@@ -101,84 +102,94 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setTimeout(() => setIsSaved(false), 2000);
   };
 
-  const handleExportFullBackup = async () => {
+  // Download Habit History Data File (CSV)
+  const handleDownloadHabitHistoryCSV = () => {
     try {
-      const jsonStr = await exportBackupJSON();
-      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const today = new Date().toISOString().split('T')[0];
+      let csv = 'Record Type,Date,Habit Name,Category,Daily Target,Current Streak,Best Streak,Lifetime Check-ins,Logged Timestamp\n';
+      
+      // Habit definitions
+      habits.forEach(h => {
+        csv += `Habit Definition,"${today}","${h.name.replace(/"/g, '""')}","${h.category}","${h.goalTarget} ${h.goalUnit}","${h.streak} days","${h.bestStreak} days","${h.totalCompletions}","${h.createdAt}"\n`;
+      });
+
+      // Daily completion records
+      const habitMap = new Map<string, Habit>(habits.map(h => [h.id, h]));
+      const sortedCompletions = [...completions].sort((a, b) => b.date.localeCompare(a.date));
+      sortedCompletions.forEach(c => {
+        const habit = habitMap.get(c.habitId);
+        const habitName = habit ? habit.name : (c.habitId || 'Custom Habit');
+        const habitCat = habit ? habit.category : 'General';
+        const habitTarget = habit ? `${habit.goalTarget} ${habit.goalUnit}` : '1 check-in';
+        csv += `Daily Completion,"${c.date}","${habitName.replace(/"/g, '""')}","${habitCat}","${habitTarget}","—","—","1","${c.completedAt}"\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `todo-habits-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `habit-history-${today}.csv`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      setBackupMessage({ type: 'success', text: 'Complete IndexedDB backup downloaded!' });
+
+      setBackupMessage({ type: 'success', text: `Habit history CSV downloaded successfully (${sortedCompletions.length} completion records)!` });
       setTimeout(() => setBackupMessage(null), 3500);
     } catch (err: any) {
-      setBackupMessage({ type: 'error', text: err?.message || 'Failed to export backup' });
+      setBackupMessage({ type: 'error', text: 'Failed to download habit history: ' + (err?.message || 'Error') });
       setTimeout(() => setBackupMessage(null), 3500);
     }
   };
 
-  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Download Habit History Data File (JSON)
+  const handleDownloadHabitHistoryJSON = () => {
     try {
-      const text = await file.text();
-      const res = await importBackupJSON(text);
-      if (res.success) {
-        setBackupMessage({ type: 'success', text: res.message });
-      } else {
-        setBackupMessage({ type: 'error', text: res.message });
-      }
-      setTimeout(() => setBackupMessage(null), 4500);
+      const today = new Date().toISOString().split('T')[0];
+      const historyData = {
+        app: 'To-Do-Habits',
+        exportType: 'Habit History & Records',
+        downloadedAt: new Date().toISOString(),
+        user: {
+          name: user?.name || 'User',
+          email: user?.email || '',
+        },
+        habits: habits.map(h => ({
+          id: h.id,
+          name: h.name,
+          category: h.category,
+          target: `${h.goalTarget} ${h.goalUnit}`,
+          frequency: h.frequency,
+          streak: h.streak,
+          bestStreak: h.bestStreak,
+          totalCompletions: h.totalCompletions,
+          isArchived: h.isArchived || false,
+        })),
+        historyCompletions: completions.map(c => ({
+          id: c.id,
+          date: c.date,
+          habitId: c.habitId,
+          completedAt: c.completedAt,
+        })),
+        totalCompletionsRecorded: completions.length,
+      };
+
+      const blob = new Blob([JSON.stringify(historyData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `habit-history-${today}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setBackupMessage({ type: 'success', text: `Habit history JSON data file downloaded successfully!` });
+      setTimeout(() => setBackupMessage(null), 3500);
     } catch (err: any) {
-      setBackupMessage({ type: 'error', text: 'Invalid JSON backup: ' + err.message });
-      setTimeout(() => setBackupMessage(null), 4500);
+      setBackupMessage({ type: 'error', text: 'Failed to download habit history: ' + (err?.message || 'Error') });
+      setTimeout(() => setBackupMessage(null), 3500);
     }
-    e.target.value = '';
-  };
-
-  // JSON Data Export
-  const handleExportJSON = () => {
-    const data = {
-      profile: user,
-      habits,
-      completions,
-      moodEntries,
-      healthMetrics,
-      exportedAt: new Date().toISOString(),
-      app: 'To-Do-Habits',
-      version: '1.0.0',
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `todo-habits-backup-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // CSV Data Export
-  const handleExportCSV = () => {
-    let csv = 'Type,ID/Date,Name/Score,Category/Emotions,Streak/Target,Timestamp\n';
-    habits.forEach(h => {
-      csv += `Habit,"${h.id}","${h.name}","${h.category}","${h.streak} days","${h.createdAt}"\n`;
-    });
-    completions.forEach(c => {
-      csv += `Completion,"${c.date}","${c.habitId}","","","${c.completedAt}"\n`;
-    });
-    moodEntries.forEach(m => {
-      csv += `Mood,"${m.date}","Score ${m.score}","${m.emotions.join(';')}","","${m.timestamp}"\n`;
-    });
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `todo-habits-data-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const handleResetData = () => {
@@ -629,13 +640,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             )}
           </div>
 
-          {/* Data Export & Backup Card */}
+          {/* Habit History Data File Download Card */}
           <div className="p-6 rounded-3xl glass-card shadow-lg space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white pb-2 border-b border-white/50 dark:border-white/10">
-              Persistent Backup & Data
-            </h3>
+            <div className="flex items-center justify-between pb-2 border-b border-white/50 dark:border-white/10">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+                <span>Habit History Data File</span>
+              </h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                {completions.length} Records Logged
+              </span>
+            </div>
+            
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Your habit history, streaks, and settings are stored locally in IndexedDB. Backup or restore anytime.
+              Download your complete habit history, daily completions, consistency rates, and streaks directly to your device.
             </p>
 
             {backupMessage && (
@@ -655,65 +673,47 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
             )}
 
-            {/* Hidden file input for restore */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleImportFileChange}
-              className="hidden"
-            />
-
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               <button
                 type="button"
-                onClick={handleExportFullBackup}
-                className="w-full flex items-center justify-between p-3 rounded-2xl glass-subcard hover:border-indigo-400 transition-colors text-left cursor-pointer"
+                onClick={handleDownloadHabitHistoryCSV}
+                className="w-full flex items-center justify-between p-3.5 rounded-2xl glass-subcard hover:border-emerald-500 hover:bg-emerald-500/5 transition-all text-left cursor-pointer group shadow-xs"
               >
-                <div className="flex items-center gap-2.5">
-                  <FileText className="w-4 h-4 text-indigo-500" />
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform">
+                    <FileSpreadsheet className="w-5 h-5" />
+                  </div>
                   <div>
-                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
-                      Export Full Backup (JSON)
+                    <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 block">
+                      Download Habit History (CSV Spreadsheet)
                     </span>
-                    <span className="text-[10px] text-slate-400">Includes habits, streaks, history, & profiles</span>
+                    <span className="text-[11px] text-slate-400">
+                      Standard format for Excel, Google Sheets, or Numbers
+                    </span>
                   </div>
                 </div>
-                <Download className="w-4 h-4 text-indigo-500" />
+                <Download className="w-4 h-4 text-emerald-500 group-hover:translate-y-0.5 transition-transform shrink-0" />
               </button>
 
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full flex items-center justify-between p-3 rounded-2xl glass-subcard hover:border-indigo-400 transition-colors text-left cursor-pointer"
+                onClick={handleDownloadHabitHistoryJSON}
+                className="w-full flex items-center justify-between p-3.5 rounded-2xl glass-subcard hover:border-indigo-500 hover:bg-indigo-500/5 transition-all text-left cursor-pointer group shadow-xs"
               >
-                <div className="flex items-center gap-2.5">
-                  <Upload className="w-4 h-4 text-teal-500" />
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform">
+                    <FileText className="w-5 h-5" />
+                  </div>
                   <div>
-                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
-                      Restore from Backup (JSON)
+                    <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 block">
+                      Download Habit History (JSON Data File)
                     </span>
-                    <span className="text-[10px] text-slate-400">Load previous habits & data from file</span>
+                    <span className="text-[11px] text-slate-400">
+                      Complete structured data export with all habit attributes
+                    </span>
                   </div>
                 </div>
-                <Upload className="w-4 h-4 text-teal-500" />
-              </button>
-
-              <button
-                type="button"
-                onClick={handleExportCSV}
-                className="w-full flex items-center justify-between p-3 rounded-2xl glass-subcard hover:border-indigo-400 transition-colors text-left cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5">
-                  <FileSpreadsheet className="w-4 h-4 text-amber-500" />
-                  <div>
-                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
-                      Export CSV Spreadsheet
-                    </span>
-                    <span className="text-[10px] text-slate-400">For Excel, Numbers, or Google Sheets</span>
-                  </div>
-                </div>
-                <Download className="w-4 h-4 text-amber-500" />
+                <Download className="w-4 h-4 text-indigo-500 group-hover:translate-y-0.5 transition-transform shrink-0" />
               </button>
             </div>
           </div>

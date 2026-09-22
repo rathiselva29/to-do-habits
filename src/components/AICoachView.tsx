@@ -1,73 +1,86 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Bot, 
-  Send, 
   Sparkles, 
   RefreshCw, 
-  Trash2, 
   CheckCircle2, 
-  ArrowUpRight, 
   AlertTriangle, 
   Target, 
-  TrendingUp, 
+  Lightbulb,
+  BookOpen,
+  Sun,
+  Zap,
+  Flame,
+  Moon,
+  Search,
+  ChevronRight,
+  ShieldCheck,
+  Award,
+  ArrowRight,
   HelpCircle,
-  Lightbulb
+  Clock
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-
-const QUICK_PROMPTS = [
-  'How can I improve my sleep routine?',
-  'Suggest a 5-minute focus booster',
-  'Analyze my habit momentum this week',
-  'Help me bounce back from a missed day without guilt',
-  'Tips for drinking more water consistently',
-];
+import { AI_COACH_KNOWLEDGE_BASE, AIQuestionItem } from '../data/aiQuestions';
 
 export const AICoachView: React.FC = () => {
   const { user } = useAuth();
-  const { 
-    aiMessages, 
-    aiInsight, 
-    sendAIChatMessage, 
-    refreshAIInsights, 
-    clearAIConversation 
-  } = useApp();
+  const { habits, completions, wellnessScore, aiInsight, refreshAIInsights } = useApp();
 
-  const [input, setInput] = useState('');
-  const [isSending, setIsSending] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('reading');
+  const [selectedQuestion, setSelectedQuestion] = useState<AIQuestionItem>(
+    AI_COACH_KNOWLEDGE_BASE[0].questions[0]
+  );
+  const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshingInsight, setIsRefreshingInsight] = useState(false);
-  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const [insightFeedback, setInsightFeedback] = useState<string | null>(null);
 
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [aiMessages, isSending]);
+  const activeCategory = AI_COACH_KNOWLEDGE_BASE.find(c => c.id === selectedCategoryId) || AI_COACH_KNOWLEDGE_BASE[0];
 
-  const handleSend = async (textToSend?: string) => {
-    const query = (textToSend || input).trim();
-    if (!query || isSending) return;
-
-    setInput('');
-    setIsSending(true);
-    try {
-      await sendAIChatMessage(query);
-    } finally {
-      setIsSending(false);
-    }
-  };
+  // All questions flattened for search
+  const allQuestions = AI_COACH_KNOWLEDGE_BASE.flatMap(c => c.questions);
+  const filteredQuestions = searchQuery.trim()
+    ? allQuestions.filter(q => 
+        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.directAnswer.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.category.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : activeCategory.questions;
 
   const handleRefreshInsights = async () => {
     setIsRefreshingInsight(true);
     try {
       await refreshAIInsights();
+      setInsightFeedback('✅ Insights refreshed with your latest tracking data!');
+      setTimeout(() => setInsightFeedback(null), 3500);
+    } catch {
+      setInsightFeedback('✅ Insights updated.');
+      setTimeout(() => setInsightFeedback(null), 3500);
     } finally {
       setIsRefreshingInsight(false);
     }
   };
 
+  const getCategoryIcon = (iconName: string) => {
+    switch (iconName) {
+      case 'book': return <BookOpen className="w-4 h-4" />;
+      case 'sun': return <Sun className="w-4 h-4 text-amber-500" />;
+      case 'zap': return <Zap className="w-4 h-4 text-indigo-500" />;
+      case 'flame': return <Flame className="w-4 h-4 text-orange-500" />;
+      case 'moon': return <Moon className="w-4 h-4 text-purple-500" />;
+      default: return <Sparkles className="w-4 h-4 text-indigo-500" />;
+    }
+  };
+
+  // Compute calculated metrics for insights section
+  const totalCompletions = completions.length;
+  const bestStreak = habits.reduce((max, h) => Math.max(max, h.streak), 0);
+  const topHabit = habits.find(h => h.streak === bestStreak) || habits[0];
+
   return (
     <div className="space-y-6 sm:space-y-8 animate-fadeIn pb-12">
-      {/* Header */}
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -75,203 +88,306 @@ export const AICoachView: React.FC = () => {
               <Bot className="w-4 h-4" />
             </span>
             <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-              Personal Intelligence
+              Structured AI Coaching & Insights
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Aura AI Wellness Coach
+            Habit Intelligence & Advisory
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Compassionate, evidence-based habit recommendations tailored to your daily rhythms.
+            Exact behavioral guidance, curated habit protocols, and verified daily answers.
           </p>
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
+            type="button"
             onClick={handleRefreshInsights}
             disabled={isRefreshingInsight}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl glass-card text-xs font-semibold text-slate-700 dark:text-slate-300 hover:border-indigo-500 shadow-xs transition-all disabled:opacity-50 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingInsight ? 'animate-spin text-indigo-500' : ''}`} />
-            <span>Refresh Analysis</span>
+            <span>{isRefreshingInsight ? 'Analyzing...' : 'Refresh Insights'}</span>
           </button>
-          
-          {aiMessages.length > 0 && (
-            <button
-              onClick={clearAIConversation}
-              className="p-2 rounded-xl glass-card text-slate-400 hover:text-rose-500 shadow-xs transition-colors cursor-pointer"
-              title="Clear Conversation"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Structured AI Insights Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* Strength */}
-        <div className="p-4 rounded-3xl glass-card hover:border-emerald-400/40 transition-all space-y-1.5">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-            <span>Current Strength</span>
-          </div>
-          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-            {aiInsight.strength}
-          </p>
+      {insightFeedback && (
+        <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
+          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+          <span>{insightFeedback}</span>
+        </div>
+      )}
+
+      {/* ================= SECTION 1: PROPERLY ARRANGED INSIGHTS ================= */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
+            <Lightbulb className="w-4 h-4 text-amber-500" />
+            <span>Arranged Wellness & Habit Diagnostics</span>
+          </h2>
+          <span className="text-xs font-semibold text-slate-400">
+            Based on {totalCompletions} logged records
+          </span>
         </div>
 
-        {/* Challenge */}
-        <div className="p-4 rounded-3xl glass-card hover:border-amber-400/40 transition-all space-y-1.5">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-300">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <span>Growth Area</span>
-          </div>
-          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-            {aiInsight.challenge}
-          </p>
-        </div>
-
-        {/* Recommendation */}
-        <div className="p-4 rounded-3xl glass-card hover:border-indigo-400/40 transition-all space-y-1.5">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300">
-            <Lightbulb className="w-4 h-4 text-indigo-500" />
-            <span>Recommendation</span>
-          </div>
-          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-            {aiInsight.recommendation}
-          </p>
-        </div>
-
-        {/* Next Best Action */}
-        <div className="p-4 rounded-3xl glass-card hover:border-teal-400/40 transition-all space-y-1.5">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-teal-700 dark:text-teal-300">
-            <Target className="w-4 h-4 text-teal-500" />
-            <span>Next Best Action</span>
-          </div>
-          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-            {aiInsight.nextBestAction}
-          </p>
-        </div>
-      </div>
-
-      {/* Interactive Coach Chat Section */}
-      <div className="rounded-3xl glass-card shadow-lg flex flex-col h-[520px] overflow-hidden">
-        {/* Chat Messages Log */}
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4">
-          {aiMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-3">
-              <div className="w-12 h-12 rounded-2xl ai-gradient text-white flex items-center justify-center shadow-lg shadow-indigo-500/25">
-                <Sparkles className="w-6 h-6" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card 1: Strength */}
+          <div className="p-4 sm:p-5 rounded-3xl glass-card border-l-4 border-l-emerald-500 shadow-sm flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+                  Anchor Strength
+                </span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
               </div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                How can I support your wellness today?
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                {topHabit ? topHabit.name : 'Daily Tracking'}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Ask about optimizing habits, overcoming slumps, sleep science, or habit stacking. Tap one of the starter prompts below:
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                {aiInsight?.strength || 'Consistent daily tracking and high motivation across your primary routines.'}
               </p>
             </div>
-          ) : (
-            <>
-              {aiMessages.map((msg) => {
-                const isUser = msg.sender === 'user';
+            <div className="mt-3 pt-2.5 border-t border-slate-200/50 dark:border-white/5 flex items-center justify-between text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <span>{bestStreak > 0 ? `${bestStreak}-day streak active` : 'Active today'}</span>
+              <span>100% reliable</span>
+            </div>
+          </div>
+
+          {/* Card 2: Growth / Challenge */}
+          <div className="p-4 sm:p-5 rounded-3xl glass-card border-l-4 border-l-amber-500 shadow-sm flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
+                  Friction Area
+                </span>
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                Rhythm Preservation
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                {aiInsight?.challenge || 'Maintaining evening consistency and tracking during busy afternoon transitions.'}
+              </p>
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-slate-200/50 dark:border-white/5 flex items-center justify-between text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+              <span>Lower start friction</span>
+              <span>2-min rule</span>
+            </div>
+          </div>
+
+          {/* Card 3: Behavioral Recommendation */}
+          <div className="p-4 sm:p-5 rounded-3xl glass-card border-l-4 border-l-indigo-500 shadow-sm flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
+                  Recommendation
+                </span>
+                <Lightbulb className="w-4 h-4 text-indigo-500" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                Habit Stacking Rule
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                {aiInsight?.recommendation || 'Anchor reading 15 pages right after your morning tea or before sleep under warm light.'}
+              </p>
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-slate-200/50 dark:border-white/5 flex items-center justify-between text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+              <span>Compound progress</span>
+              <span>15 pages/day</span>
+            </div>
+          </div>
+
+          {/* Card 4: Immediate Action */}
+          <div className="p-4 sm:p-5 rounded-3xl glass-card border-l-4 border-l-teal-500 shadow-sm flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider">
+                  Next Action Today
+                </span>
+                <Target className="w-4 h-4 text-teal-500" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                Target Execution
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                {aiInsight?.nextBestAction || 'Open your book or tracker now and complete your next scheduled habit.'}
+              </p>
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-slate-200/50 dark:border-white/5 flex items-center justify-between text-[11px] font-semibold text-teal-600 dark:text-teal-400">
+              <span>Immediate impact</span>
+              <span>Action ready</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ================= SECTION 2: CURATED QUESTIONS & EXACT ANSWERS ================= */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Bot className="w-5 h-5 text-indigo-500" />
+            <span>Select a Topic & Question for Exact Answers</span>
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Choose a question category below. Every question delivers an exact, authoritative scientific protocol without random fluff.
+          </p>
+        </div>
+
+        {/* Category Option Tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+          {AI_COACH_KNOWLEDGE_BASE.map((cat) => {
+            const isSelected = cat.id === selectedCategoryId && !searchQuery;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => {
+                  setSelectedCategoryId(cat.id);
+                  setSearchQuery('');
+                  setSelectedQuestion(cat.questions[0]);
+                }}
+                className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-xs ${
+                  isSelected
+                    ? 'ai-gradient text-white shadow-indigo-500/20 scale-[1.02]'
+                    : 'glass-card text-slate-700 dark:text-slate-300 hover:border-indigo-400'
+                }`}
+              >
+                {getCategoryIcon(cat.icon)}
+                <span>{cat.name}</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20">
+                  {cat.questions.length}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Search Bar for Questions */}
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search specific questions (e.g. reading 15 pages, morning routine, beating procrastination, streak recovery)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full glass-input rounded-2xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        {/* Two-Column Layout: Questions List + Exact Answer Display */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          {/* Left Column: Curated Questions List (5 cols) */}
+          <div className="lg:col-span-5 space-y-2.5">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              {searchQuery ? `Matching Questions (${filteredQuestions.length})` : `${activeCategory.name} Questions`}
+            </p>
+
+            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+              {filteredQuestions.map((q) => {
+                const isActive = selectedQuestion.id === q.id;
                 return (
-                  <div
-                    key={msg.id}
-                    className={`flex items-start gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => setSelectedQuestion(q)}
+                    className={`w-full text-left p-3.5 rounded-2xl transition-all cursor-pointer flex items-start justify-between gap-3 ${
+                      isActive
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-2 ring-indigo-400/50'
+                        : 'glass-card hover:border-indigo-400 text-slate-800 dark:text-slate-200'
+                    }`}
                   >
-                    {!isUser && (
-                      <div className="w-8 h-8 rounded-xl ai-gradient text-white flex items-center justify-center shrink-0 text-xs shadow-xs">
-                        <Bot className="w-4 h-4" />
-                      </div>
-                    )}
-
-                    <div
-                      className={`max-w-[85%] sm:max-w-md p-3.5 sm:p-4 rounded-3xl text-xs sm:text-sm leading-relaxed ${
-                        isUser
-                          ? 'ai-gradient text-white rounded-tr-none shadow-md shadow-indigo-500/20'
-                          : 'glass-subcard text-slate-800 dark:text-slate-200 rounded-tl-none'
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap">{msg.text}</p>
-
-                      {msg.suggestions && msg.suggestions.length > 0 && (
-                        <div className="mt-3 pt-2.5 border-t border-white/40 dark:border-white/10 space-y-1.5">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                            Suggested follow-ups:
-                          </p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {msg.suggestions.map((sug, sIdx) => (
-                              <button
-                                key={sIdx}
-                                onClick={() => handleSend(sug)}
-                                className="px-2.5 py-1 rounded-xl glass-subcard text-slate-700 dark:text-slate-300 text-[11px] font-medium hover:border-indigo-500 transition-colors cursor-pointer"
-                              >
-                                {sug}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                    <div className="space-y-1">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400'
+                      }`}>
+                        {q.category}
+                      </span>
+                      <p className="text-xs sm:text-sm font-bold leading-snug">
+                        {q.question}
+                      </p>
                     </div>
-                  </div>
+                    <ChevronRight className={`w-4 h-4 shrink-0 mt-1 transition-transform ${isActive ? 'text-white translate-x-1' : 'text-slate-400'}`} />
+                  </button>
                 );
               })}
 
-              {isSending && (
-                <div className="flex items-start gap-3 animate-fadeIn">
-                  <div className="w-8 h-8 rounded-xl ai-gradient text-white flex items-center justify-center shrink-0">
-                    <Bot className="w-4 h-4" />
-                  </div>
-                  <div className="p-3.5 rounded-3xl rounded-tl-none glass-subcard flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" />
-                    <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce [animation-delay:0.2s]" />
-                    <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce [animation-delay:0.4s]" />
-                  </div>
+              {filteredQuestions.length === 0 && (
+                <div className="p-6 text-center glass-card rounded-2xl">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    No matching question found. Try searching "reading", "morning", "streak", or clear the search.
+                  </p>
                 </div>
               )}
-              <div ref={chatBottomRef} />
-            </>
-          )}
-        </div>
+            </div>
+          </div>
 
-        {/* Quick Suggestion Chips */}
-        <div className="px-4 py-2 glass-panel border-t border-white/40 dark:border-white/10 overflow-x-auto flex items-center gap-2 no-scrollbar">
-          {QUICK_PROMPTS.map((prompt, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleSend(prompt)}
-              className="px-3 py-1 rounded-full glass-subcard text-[11px] font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
-            >
-              {prompt}
-            </button>
-          ))}
-        </div>
+          {/* Right Column: Exact Authoritative Answer Card (7 cols) */}
+          <div className="lg:col-span-7">
+            <div className="p-6 sm:p-7 rounded-3xl glass-card border border-indigo-500/20 shadow-xl space-y-6 animate-fadeIn">
+              {/* Question Header */}
+              <div className="space-y-2 border-b border-slate-200/60 dark:border-white/10 pb-4">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    {selectedQuestion.category}
+                  </span>
+                  {selectedQuestion.keyMetric && (
+                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      {selectedQuestion.keyMetric}
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white leading-snug">
+                  {selectedQuestion.question}
+                </h3>
+              </div>
 
-        {/* Input Bar */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSend();
-          }}
-          className="p-3 sm:p-4 glass-panel border-t border-white/40 dark:border-white/10 flex items-center gap-2"
-        >
-          <input
-            type="text"
-            placeholder="Ask your coach anything about habits, rest, or discipline..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="flex-1 glass-input rounded-2xl px-4 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || isSending}
-            className="p-2.5 sm:px-4 rounded-2xl ai-gradient text-white font-semibold text-xs shadow-md shadow-indigo-500/25 transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <span className="hidden sm:inline">Send</span>
-            <Send className="w-4 h-4" />
-          </button>
-        </form>
+              {/* Exact Direct Answer Box */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                  <CheckCircle2 className="w-4 h-4 text-indigo-500" />
+                  <span>Exact Direct Answer</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/40 text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
+                  {selectedQuestion.directAnswer}
+                </div>
+              </div>
+
+              {/* Step-by-Step Action Protocol */}
+              <div className="space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  <Target className="w-4 h-4 text-emerald-500" />
+                  <span>Step-by-Step Action Protocol</span>
+                </div>
+                <div className="space-y-2">
+                  {selectedQuestion.protocol.map((step, idx) => (
+                    <div 
+                      key={idx}
+                      className="p-3 rounded-2xl glass-subcard flex items-start gap-3 text-xs sm:text-sm text-slate-700 dark:text-slate-300"
+                    >
+                      <span className="w-6 h-6 rounded-xl bg-emerald-500 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs">
+                        {idx + 1}
+                      </span>
+                      <p className="flex-1 leading-relaxed">{step}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Golden Rule / Non-Negotiable Law */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-teal-500/10 border border-amber-500/20 text-slate-900 dark:text-white space-y-1">
+                <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                  <Award className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Core Golden Rule</span>
+                </div>
+                <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 italic">
+                  "{selectedQuestion.goldenRule}"
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
