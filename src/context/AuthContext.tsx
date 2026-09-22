@@ -86,9 +86,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<UserProfile | null>(() => StorageService.getProfile());
   const [profiles, setProfiles] = useState<UserProfile[]>(() => StorageService.getProfiles());
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState<boolean>(false);
-  const [authProviderType, setAuthProviderType] = useState<'supabase' | 'firebase' | 'demo'>('supabase');
+  const [authProviderType, setAuthProviderType] = useState<'supabase' | 'firebase' | 'demo'>('firebase');
 
   // Helper to sync or initialize Supabase profile
   const syncSupabaseProfile = async (sbUser: any, fallbackName?: string): Promise<UserProfile> => {

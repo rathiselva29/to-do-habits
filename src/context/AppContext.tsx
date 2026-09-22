@@ -196,16 +196,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Load user data whenever authenticated user changes
   useEffect(() => {
-    if (!user?.id) {
-      // Unauthenticated: clear data
-      setHabits([]);
-      setCompletions([]);
-      setMoodEntries([]);
-      setHealthMetrics([]);
-      return;
-    }
-
-    const currentUserId = user.id;
+    const activeProfile = user || StorageService.getProfile();
+    const currentUserId = activeProfile?.id || 'local-user-default';
 
     // Load from local storage initially for this profile
     const localHabits = StorageService.getHabits(currentUserId);

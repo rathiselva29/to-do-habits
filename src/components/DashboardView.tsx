@@ -13,12 +13,15 @@ import {
   ChevronRight,
   TrendingUp,
   BellRing,
+  Bell,
+  ShieldCheck,
   X,
   Check,
   Award,
   Sun,
   Moon,
-  Filter
+  Filter,
+  BookOpen
 } from 'lucide-react';
 import { Habit } from '../types';
 import { useApp } from '../context/AppContext';
@@ -26,6 +29,7 @@ import { useAuth } from '../context/AuthContext';
 import { IconRenderer } from './IconRenderer';
 import { getTodayDateString } from '../services/storage';
 import { formatTimeTo12Hour } from '../utils/timeFormat';
+import { NotificationService } from '../services/notifications';
 import { User, Users } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -52,10 +56,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     aiInsight, 
     activeReminderNotification,
     dismissReminder,
-    toggleHabitCompletion 
+    toggleHabitCompletion,
+    notificationSettings,
+    requestNotificationPermission,
+    sendTestNotification
   } = useApp();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'am' | 'pm' | 'pending' | 'completed'>('all');
+  const [notificationFeedback, setNotificationFeedback] = useState<string | null>(null);
+  const [isSendingTest, setIsSendingTest] = useState(false);
 
   const todayStr = getTodayDateString();
   const activeHabits = habits.filter(h => !h.isArchived && !h.isPaused);
@@ -188,6 +197,78 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <Plus className="w-4 h-4" />
           <span>New Habit</span>
         </button>
+      </div>
+
+      {/* Daily Morning Notification & Reading Track Card */}
+      <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-teal-500/10 border border-amber-500/20 dark:border-amber-400/20 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+            <Bell className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                Daily Morning Notification
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                Scheduled at {formatTimeTo12Hour(notificationSettings?.reminderTime || '08:00')}
+              </span>
+              {NotificationService.getPermissionStatus() === 'granted' ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Device Active
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                  Permission Required
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+              Monitors daily track reading & habits. Automatically alerts you every morning for any unfinished tasks.
+            </p>
+            {notificationFeedback && (
+              <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 mt-1 animate-fadeIn">
+                {notificationFeedback}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+          {NotificationService.getPermissionStatus() !== 'granted' ? (
+            <button
+              type="button"
+              onClick={async () => {
+                const res = await requestNotificationPermission();
+                if (res === 'granted') {
+                  setNotificationFeedback('✅ Morning notifications enabled!');
+                  setTimeout(() => setNotificationFeedback(null), 4000);
+                }
+              }}
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md shadow-amber-600/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span>Enable Device Notifications</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={isSendingTest}
+              onClick={async () => {
+                setIsSendingTest(true);
+                const res = await sendTestNotification();
+                setNotificationFeedback(res.message);
+                setIsSendingTest(false);
+                setTimeout(() => setNotificationFeedback(null), 4500);
+              }}
+              className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <BellRing className="w-3.5 h-3.5 text-indigo-500" />
+              <span>{isSendingTest ? 'Sending...' : 'Test Morning Alert'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ================= PERSONAL HABIT MONITOR PER PERSON ================= */}

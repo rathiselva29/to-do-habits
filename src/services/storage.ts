@@ -49,22 +49,24 @@ export function getPastDateString(daysAgo: number): string {
 }
 
 // Initial default profile template
+export const DEFAULT_USER_ID = 'local-user-default';
+
 export const DEFAULT_PROFILE: UserProfile = {
-  id: '',
-  email: '',
-  name: '',
-  selectedCategories: ['Fitness', 'Nutrition', 'Mental wellness', 'Productivity'],
-  goals: ['Build consistency', 'Improve health', 'Reduce stress'],
+  id: DEFAULT_USER_ID,
+  email: 'habit.champion@offline.local',
+  name: 'Habit Champion',
+  selectedCategories: ['Learning', 'Fitness', 'Nutrition', 'Mental wellness', 'Productivity'],
+  goals: ['Daily reading', 'Build consistency', 'Improve health'],
   reminderTimePreference: '08:00',
   wakeTime: '07:00',
   sleepTime: '23:00',
   heightCm: 175,
   weightKg: 70,
   age: 28,
-  gender: 'male',
+  gender: 'other',
   bpSystolic: 120,
   bpDiastolic: 80,
-  isOnboarded: false,
+  isOnboarded: true,
   theme: 'light',
   units: 'metric',
   createdAt: new Date().toISOString(),
@@ -73,35 +75,24 @@ export const DEFAULT_PROFILE: UserProfile = {
 export const INITIAL_HABITS: Habit[] = [];
 
 export function generateStarterHabitsForUser(categories: HabitCategory[], userId: string): Habit[] {
-  const starterMap: Partial<Record<HabitCategory, Partial<Habit>>> = {
-    'Fitness': { name: 'Morning 20-Min Movement', icon: 'dumbbell', color: '#10b981', frequency: 'daily', goalTarget: 20, goalUnit: 'mins' },
-    'Nutrition': { name: 'Drink 2 Liters of Water', icon: 'droplet', color: '#06b6d4', frequency: 'daily', goalTarget: 2000, goalUnit: 'ml' },
-    'Mental wellness': { name: '10-Min Morning Mindfulness', icon: 'brain', color: '#8b5cf6', frequency: 'daily', goalTarget: 10, goalUnit: 'mins' },
-    'Productivity': { name: 'Deep Work Focus Block', icon: 'target', color: '#f59e0b', frequency: 'daily', goalTarget: 60, goalUnit: 'mins' },
-    'Learning': { name: 'Read 15 Pages of a Book', icon: 'book', color: '#ec4899', frequency: 'daily', goalTarget: 15, goalUnit: 'pages' },
-    'Sleep': { name: 'Wind Down & Sleep on Schedule', icon: 'moon', color: '#6366f1', frequency: 'daily', goalTarget: 1, goalUnit: 'session' },
-    'Self-care': { name: 'Evening Relax & Self-Care', icon: 'heart', color: '#14b8a6', frequency: 'daily', goalTarget: 1, goalUnit: 'session' },
-    'Relationships': { name: 'Connect with a Friend or Family', icon: 'users', color: '#3b82f6', frequency: 'daily', goalTarget: 1, goalUnit: 'check-in' },
-    'Finances': { name: 'Review Daily Budget & Expenses', icon: 'coins', color: '#10b981', frequency: 'daily', goalTarget: 1, goalUnit: 'check' },
-    'Personal growth': { name: 'Daily Wins & Journal Reflection', icon: 'trending-up', color: '#f97316', frequency: 'daily', goalTarget: 1, goalUnit: 'entry' },
-    'Other': { name: 'Daily Habit Routine', icon: 'star', color: '#6366f1', frequency: 'daily', goalTarget: 1, goalUnit: 'times' }
-  };
+  const effectiveUserId = userId || DEFAULT_USER_ID;
+  const today = getTodayDateString();
 
-  const selected = categories && categories.length > 0 ? categories.slice(0, 3) : (['Fitness', 'Nutrition', 'Mental wellness'] as HabitCategory[]);
-  return selected.map((cat, idx) => {
-    const template = starterMap[cat] || starterMap['Fitness'];
-    return {
-      id: `habit-starter-${idx}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
-      userId,
-      name: template.name || 'Daily Routine',
-      category: cat,
-      icon: template.icon || 'star',
-      color: template.color || '#6366f1',
-      frequency: template.frequency || 'daily',
-      goalTarget: template.goalTarget || 1,
-      goalUnit: template.goalUnit || 'times',
+  return [
+    {
+      id: `habit-starter-reading-${effectiveUserId}`,
+      userId: effectiveUserId,
+      name: 'Daily Track Reading (15 Pages)',
+      category: 'Learning',
+      description: 'Daily reading session to build consistent reading progress and intellect.',
+      icon: 'book',
+      color: '#ec4899',
+      frequency: 'daily',
+      goalTarget: 15,
+      goalUnit: 'pages',
       difficulty: 'medium',
-      startDate: getTodayDateString(),
+      reminderTime: '08:00',
+      startDate: today,
       streak: 0,
       bestStreak: 0,
       totalCompletions: 0,
@@ -109,8 +100,74 @@ export function generateStarterHabitsForUser(categories: HabitCategory[], userId
       isPaused: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    };
-  });
+    },
+    {
+      id: `habit-starter-fitness-${effectiveUserId}`,
+      userId: effectiveUserId,
+      name: 'Morning 20-Min Movement',
+      category: 'Fitness',
+      description: 'Invigorating morning workout, run, or bodyweight stretch.',
+      icon: 'dumbbell',
+      color: '#10b981',
+      frequency: 'daily',
+      goalTarget: 20,
+      goalUnit: 'mins',
+      difficulty: 'medium',
+      reminderTime: '07:30',
+      startDate: today,
+      streak: 0,
+      bestStreak: 0,
+      totalCompletions: 0,
+      isArchived: false,
+      isPaused: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: `habit-starter-nutrition-${effectiveUserId}`,
+      userId: effectiveUserId,
+      name: 'Drink 2 Liters of Water',
+      category: 'Nutrition',
+      description: 'Clean hydration throughout the day for steady energy and focus.',
+      icon: 'droplet',
+      color: '#06b6d4',
+      frequency: 'daily',
+      goalTarget: 2000,
+      goalUnit: 'ml',
+      difficulty: 'easy',
+      reminderTime: '09:00',
+      startDate: today,
+      streak: 0,
+      bestStreak: 0,
+      totalCompletions: 0,
+      isArchived: false,
+      isPaused: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: `habit-starter-mindfulness-${effectiveUserId}`,
+      userId: effectiveUserId,
+      name: '10-Min Morning Mindfulness',
+      category: 'Mental wellness',
+      description: 'Centering breathwork or meditation before the workday begins.',
+      icon: 'brain',
+      color: '#8b5cf6',
+      frequency: 'daily',
+      goalTarget: 10,
+      goalUnit: 'mins',
+      difficulty: 'easy',
+      reminderTime: '08:30',
+      startDate: today,
+      streak: 0,
+      bestStreak: 0,
+      totalCompletions: 0,
+      isArchived: false,
+      isPaused: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  ];
 }
 
 export function generateInitialCompletions(): HabitCompletion[] {
@@ -315,27 +372,38 @@ export const StorageService = {
     }
   },
 
-  getProfile(): UserProfile | null {
+  getProfile(): UserProfile {
     const activeId = this.getActiveProfileId();
     if (activeId) {
       const profiles = this.getProfiles();
       const match = profiles.find(p => p.id === activeId);
-      if (match) return match;
+      if (match) {
+        if (!match.isOnboarded) {
+          match.isOnboarded = true;
+        }
+        return match;
+      }
     }
 
     const raw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-    if (!raw) {
-      return null;
-    }
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && (parsed.id || parsed.email || parsed.name)) {
-        return parsed;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && (parsed.id || parsed.name)) {
+          if (!parsed.isOnboarded) {
+            parsed.isOnboarded = true;
+          }
+          return parsed;
+        }
+      } catch {
+        // Fallback below
       }
-      return null;
-    } catch {
-      return null;
     }
+
+    // Auto-initialize persistent default profile
+    const defaultProf: UserProfile = { ...DEFAULT_PROFILE };
+    this.saveProfile(defaultProf);
+    return defaultProf;
   },
 
   saveProfile(profile: UserProfile): void {
@@ -400,15 +468,23 @@ export const StorageService = {
 
   getHabits(userId?: string): Habit[] {
     const all = this.getAllHabits();
-    if (!userId) {
-      const active = this.getProfile();
-      if (active && active.id) {
-        const userHabits = all.filter(h => h.userId === active.id);
-        return userHabits;
-      }
-      return all;
+    const active = this.getProfile();
+    const targetUserId = userId || (active ? active.id : DEFAULT_USER_ID);
+
+    // Filter for current user's habits (or habits created without explicit userId)
+    let userHabits = all.filter(h => !h.userId || h.userId === targetUserId);
+
+    if (userHabits.length === 0) {
+      // Auto-generate starter habits including Daily Track Reading
+      const starters = generateStarterHabitsForUser(
+        ['Learning', 'Fitness', 'Nutrition', 'Mental wellness'],
+        targetUserId
+      );
+      this.saveHabitsForUser(targetUserId, starters);
+      return starters;
     }
-    return all.filter(h => h.userId === userId);
+
+    return userHabits;
   },
 
   saveHabits(habits: Habit[]): void {

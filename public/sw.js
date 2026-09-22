@@ -1,5 +1,5 @@
 // To-Do-Habits Service Worker - Full Offline First & PWA Support
-const CACHE_NAME = 'todo-habits-cache-v2';
+const CACHE_NAME = 'todo-habits-cache-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -43,11 +43,14 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
 
-  // Skip API routes and dev server internal reload endpoints
+  // Skip API routes, dev server internal reload endpoints, and non-http schemes
   if (
+    !url.protocol.startsWith('http') ||
     url.pathname.startsWith('/api/') || 
     url.pathname.includes('/@vite/') || 
-    url.pathname.includes('/@react-refresh')
+    url.pathname.includes('/@react-refresh') ||
+    url.pathname.includes('/@fs/') ||
+    url.pathname.includes('/@id/')
   ) {
     return;
   }
@@ -63,46 +66,33 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
-        .catch(() => {
-          // Offline fallback
-          return caches.match('/index.html').then((cached) => cached || caches.match('/'));
+        .catch(async () => {
+          const cached = await caches.match('/index.html') || await caches.match('/');
+          if (cached) return cached;
+          return new Response('<!DOCTYPE html><html><body>Offline</body></html>', {
+            headers: { 'Content-Type': 'text/html' }
+          });
         })
     );
     return;
   }
 
-  // Assets (JS, CSS, images, fonts): Cache-First with Network Revalidation
+  // Assets (JS, CSS, images, fonts): Cache-First with Stale-While-Revalidate
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Revalidate in background if online
-        fetch(event.request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse.clone()));
-            }
-          })
-          .catch(() => {
-            // Offline - cachedResponse already returned safely
-          });
-        return cachedResponse;
-      }
-
-      return fetch(event.request)
+      const fetchPromise = fetch(event.request)
         .then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200) {
-            return networkResponse;
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
           }
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
           return networkResponse;
         })
-        .catch((err) => {
-          // Return cached matching asset if any
-          return caches.match(event.request);
+        .catch(() => {
+          return cachedResponse;
         });
+
+      return cachedResponse || fetchPromise;
     })
   );
 });
