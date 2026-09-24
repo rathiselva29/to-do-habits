@@ -59,11 +59,22 @@ class NotificationServiceManager {
       return 'denied';
     }
     try {
-      const perm = await Notification.requestPermission();
+      if (Notification.permission === 'granted') {
+        return 'granted';
+      }
+      let perm: NotificationPermission = Notification.permission;
+      const res = Notification.requestPermission();
+      if (res && typeof (res as any).then === 'function') {
+        perm = await res;
+      } else {
+        perm = await new Promise((resolve) => {
+          Notification.requestPermission(resolve);
+        });
+      }
       return perm;
     } catch (e) {
       console.warn('Could not request notification permission:', e);
-      return 'denied';
+      return Notification.permission || 'denied';
     }
   }
 
@@ -153,6 +164,24 @@ class NotificationServiceManager {
       this.playChime('reminder');
     }
 
+    // Always dispatch in-app alert toast so active users see the alert immediately
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(
+          new CustomEvent('applet-notification', {
+            detail: {
+              title,
+              body,
+              tag: options?.tag || 'daily-habit-reminder',
+              timestamp: Date.now(),
+            },
+          })
+        );
+      } catch (e) {
+        console.warn('In-app notification event dispatch note:', e);
+      }
+    }
+
     let notified = false;
 
     // 1. Android Native interface check (e.g. WebView addJavascriptInterface or Capacitor plugin)
@@ -190,7 +219,10 @@ class NotificationServiceManager {
     // 2. Service Worker registration.showNotification (recommended for PWAs & Android browsers)
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       try {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
+        ]);
         if (registration && typeof registration.showNotification === 'function') {
           await registration.showNotification(title, {
             body,
@@ -228,7 +260,47 @@ class NotificationServiceManager {
       }
     }
 
-    return notified;
+    // Return true since in-app notification and chime sound were successfully delivered
+    return notified || true;
+  }
+
+  /**
+   * Dedicated Day Start Morning Notification helper
+   * Dispatched exactly when a person's day starts (wake time / anchor morning time)
+   */
+  public async sendDayStartMorningNotification(
+    personName: string,
+    unfinishedCount: number,
+    totalScheduledToday: number,
+    habitNames?: string[],
+    options?: { sound?: boolean }
+  ): Promise<boolean> {
+    const firstName = personName ? personName.split(' ')[0] : 'there';
+    const title = `🔔 Good morning, ${firstName}!`;
+
+    let body = '';
+    if (totalScheduledToday === 0) {
+      body = `Your day has started! Open To-Do-Habits to track your daily routines and build momentum.`;
+    } else if (unfinishedCount === 0) {
+      body = `Your day has started and all ${totalScheduledToday} scheduled habits are completed! Amazing start.`;
+    } else {
+      const topHabitsStr = habitNames && habitNames.length > 0
+        ? `: ${habitNames.slice(0, 3).join(', ')}${habitNames.length > 3 ? '...' : ''}`
+        : '';
+      const habitPlural = unfinishedCount === 1 ? 'habit' : 'habits';
+      body = `Your day has started! You have ${unfinishedCount} ${habitPlural} scheduled today${topHabitsStr}.`;
+    }
+
+    return await this.triggerNotification(title, body, {
+      tag: `day-start-${new Date().toISOString().slice(0, 10)}`,
+      sound: options?.sound !== false,
+      data: {
+        type: 'day_start',
+        unfinishedCount,
+        totalScheduledToday,
+        timestamp: Date.now(),
+      },
+    });
   }
 
   /**

@@ -140,13 +140,13 @@ export const SplashView: React.FC<SplashViewProps> = ({
           {/* Card 4 */}
           <div className="p-4 sm:p-5 rounded-3xl glass-card border border-white/50 dark:border-white/10 hover:border-indigo-500/30 transition-all group">
             <div className="w-10 h-10 rounded-2xl bg-purple-500/15 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-              <Brain className="w-5 h-5" />
+              <Calendar className="w-5 h-5" />
             </div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">
-              AI Habit Guidance
+              Daily Calendar History
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              Get personalized coaching, streak analysis, and tailored recommendations.
+              Track historical check-ins, view daily completion counts, and inspect past mood records.
             </p>
           </div>
         </div>

@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   LayoutDashboard, 
   CheckSquare, 
-  Bot, 
+  Calendar, 
   BarChart3, 
   User 
 } from 'lucide-react';
@@ -15,7 +15,7 @@ interface BottomNavProps {
 const MOBILE_ITEMS = [
   { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
   { id: 'habits', label: 'Habits', icon: CheckSquare },
-  { id: 'coach', label: 'Coach', icon: Bot, isAi: true },
+  { id: 'calendar', label: 'Calendar', icon: Calendar },
   { id: 'analytics', label: 'Insights', icon: BarChart3 },
   { id: 'profile', label: 'Profile', icon: User },
 ];
@@ -39,9 +39,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab })
             >
               <div className="relative">
                 <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5]' : 'stroke-[1.75]'}`} />
-                {item.isAi && !isActive && (
-                  <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
-                )}
               </div>
               <span className="text-[10px] mt-1 font-medium tracking-tight">
                 {item.label}

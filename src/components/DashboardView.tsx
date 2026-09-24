@@ -9,7 +9,6 @@ import {
   Activity, 
   Clock, 
   Calendar as CalendarIcon,
-  Bot,
   ChevronRight,
   TrendingUp,
   BellRing,
@@ -58,6 +57,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     dismissReminder,
     toggleHabitCompletion,
     notificationSettings,
+    updateNotificationSettings,
     requestNotificationPermission,
     sendTestNotification
   } = useApp();
@@ -199,77 +199,92 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </button>
       </div>
 
-      {/* Daily Morning Notification & Reading Track Card */}
-      <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-teal-500/10 border border-amber-500/20 dark:border-amber-400/20 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-3.5">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
-            <Bell className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                Daily Morning Notification
-              </span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                Scheduled at {formatTimeTo12Hour(notificationSettings?.reminderTime || '08:00')}
-              </span>
-              {NotificationService.getPermissionStatus() === 'granted' ? (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Device Active
-                </span>
+      {/* Daily Morning Notification & Day-Start Routine Card */}
+      {(() => {
+        const personDayStartTime = user?.wakeTime || user?.reminderTimePreference || notificationSettings?.reminderTime || '07:00';
+        const personFirstName = user?.name ? user.name.split(' ')[0] : 'You';
+        const isAlertsActive = notificationSettings?.enabled === true;
+
+        return (
+          <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-teal-500/10 border border-amber-500/20 dark:border-amber-400/20 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                    Daily Morning Notification
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                    Scheduled at {formatTimeTo12Hour(personDayStartTime)} (Day Start for {personFirstName})
+                  </span>
+                  {isAlertsActive ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      Active
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                      Tap to Activate
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                  Triggers when your day starts at {formatTimeTo12Hour(personDayStartTime)}. Automatically greets {personFirstName} and lists your scheduled routines to conquer.
+                </p>
+                {notificationFeedback && (
+                  <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 mt-1 animate-fadeIn">
+                    {notificationFeedback}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+              {!isAlertsActive ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setNotificationFeedback(null);
+                    await updateNotificationSettings({ enabled: true });
+                    try {
+                      await requestNotificationPermission();
+                    } catch {
+                      // Handled smoothly with in-app audio & alerts
+                    }
+                    setNotificationFeedback(`✅ Morning alerts enabled for ${personFirstName}! Day starts at ${formatTimeTo12Hour(personDayStartTime)}.`);
+                    setTimeout(() => setNotificationFeedback(null), 4500);
+                  }}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md shadow-amber-600/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Bell className="w-3.5 h-3.5" />
+                  <span>Enable Morning Notifications</span>
+                </button>
               ) : (
-                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
-                  Permission Required
-                </span>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    disabled={isSendingTest}
+                    onClick={async () => {
+                      setIsSendingTest(true);
+                      setNotificationFeedback(null);
+                      const res = await sendTestNotification();
+                      setNotificationFeedback(res.message);
+                      setIsSendingTest(false);
+                      setTimeout(() => setNotificationFeedback(null), 4500);
+                    }}
+                    className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <BellRing className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>{isSendingTest ? 'Sending...' : 'Test Morning Alert'}</span>
+                  </button>
+                </div>
               )}
             </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
-              Monitors daily track reading & habits. Automatically alerts you every morning for any unfinished tasks.
-            </p>
-            {notificationFeedback && (
-              <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 mt-1 animate-fadeIn">
-                {notificationFeedback}
-              </p>
-            )}
           </div>
-        </div>
-
-        <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
-          {NotificationService.getPermissionStatus() !== 'granted' ? (
-            <button
-              type="button"
-              onClick={async () => {
-                const res = await requestNotificationPermission();
-                if (res === 'granted') {
-                  setNotificationFeedback('✅ Morning notifications enabled!');
-                  setTimeout(() => setNotificationFeedback(null), 4000);
-                }
-              }}
-              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md shadow-amber-600/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-            >
-              <Bell className="w-3.5 h-3.5" />
-              <span>Enable Device Notifications</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={isSendingTest}
-              onClick={async () => {
-                setIsSendingTest(true);
-                const res = await sendTestNotification();
-                setNotificationFeedback(res.message);
-                setIsSendingTest(false);
-                setTimeout(() => setNotificationFeedback(null), 4500);
-              }}
-              className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
-            >
-              <BellRing className="w-3.5 h-3.5 text-indigo-500" />
-              <span>{isSendingTest ? 'Sending...' : 'Test Morning Alert'}</span>
-            </button>
-          )}
-        </div>
-      </div>
+        );
+      })()}
 
       {/* ================= PERSONAL HABIT MONITOR PER PERSON ================= */}
       <div className="p-5 sm:p-6 rounded-3xl glass-card border border-white/60 dark:border-white/10 shadow-lg relative overflow-hidden">
@@ -666,35 +681,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </p>
           </div>
 
-          {/* AI Coach Spotlight Card */}
+          {/* Calendar & Daily History Spotlight Card */}
           <div className="p-5 rounded-3xl glass-card space-y-3 relative overflow-hidden">
-            {/* Frosted glow backdrop */}
             <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
 
             <div className="flex items-center justify-between relative z-10">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl ai-gradient text-white flex items-center justify-center shadow-xs">
-                  <Bot className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                  <CalendarIcon className="w-4 h-4" />
                 </div>
                 <span className="text-xs font-bold text-slate-900 dark:text-white">
-                  Your AI Coach
+                  Calendar & Daily History
                 </span>
               </div>
               <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100/80 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300">
-                Live Insights
+                History Archive
               </span>
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium relative z-10">
-              "{aiInsight?.recommendation || 'You are building steady habits. Complete your hydration and movement routines to keep your streak intact.'}"
+              Track your daily completion count, analyze completed and missed habits, and review past mood records across any calendar day.
             </p>
 
             <div className="flex items-center gap-2 pt-1 relative z-10">
               <button
-                onClick={() => setActiveTab('coach')}
-                className="flex-1 py-2 px-3 rounded-xl ai-gradient text-white text-xs font-semibold shadow-md shadow-indigo-500/20 flex items-center justify-center gap-1.5 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                onClick={() => setActiveTab('calendar')}
+                className="flex-1 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-500/20 flex items-center justify-center gap-1.5 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
               >
-                <span>Ask AI Coach</span>
+                <span>Open Calendar Archive</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>

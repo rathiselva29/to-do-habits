@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, ChevronUp, ChevronDown } from 'lucide-react';
 import { parse24HourTo12, parse12HourTo24, formatTimeTo12Hour } from '../utils/timeFormat';
+export { formatTimeTo12Hour };
 
 interface TimePicker12Props {
   id?: string;

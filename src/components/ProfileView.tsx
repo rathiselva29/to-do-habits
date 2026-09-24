@@ -20,13 +20,15 @@ import {
   Check,
   Plus,
   Users,
-  Upload
+  Upload,
+  BellRing
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { StorageService } from '../services/storage';
-import { TimePicker12 } from './TimePicker12';
+import { TimePicker12, formatTimeTo12Hour } from './TimePicker12';
 import { NotificationService } from '../services/notifications';
+import { PrivacyPolicyModal } from './PrivacyPolicyModal';
 import { Habit } from '../types';
 
 interface ProfileViewProps {
@@ -55,6 +57,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setTheme, 
     notificationSettings, 
     updateNotificationSettings, 
+    requestNotificationPermission,
+    sendTestNotification,
     habits, 
     completions, 
     moodEntries, 
@@ -64,6 +68,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   } = useApp();
 
   const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [notificationFeedback, setNotificationFeedback] = useState<string | null>(null);
+  const [isTestingNotification, setIsTestingNotification] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState(user?.name || 'Alex Rivera');
@@ -97,6 +104,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       gender,
       bpSystolic: Number(bpSystolic),
       bpDiastolic: Number(bpDiastolic),
+    });
+    // Align morning notification alert time with this user's daily reminder/wake schedule
+    await updateNotificationSettings({
+      reminderTime: reminderTime || wakeTime || '07:00'
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
@@ -435,22 +446,109 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           {/* Notifications Preferences */}
           <div className="p-6 sm:p-8 rounded-3xl glass-card shadow-lg space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-white/50 dark:border-white/10">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Notification & Sound Settings
-              </h3>
-              <button
-                type="button"
-                onClick={handleTestChime}
-                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-1"
-              >
-                <Volume2 className="w-3.5 h-3.5" />
-                <span>Test Chime</span>
-              </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/50 dark:border-white/10 gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Notification & Sound Settings
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Manage morning day-start alerts and audio effects for {name.split(' ')[0] || 'your profile'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleTestChime}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer flex items-center gap-1 transition-colors"
+                >
+                  <Volume2 className="w-3.5 h-3.5" />
+                  <span>Test Chime</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isTestingNotification}
+                  onClick={async () => {
+                    setIsTestingNotification(true);
+                    const res = await sendTestNotification();
+                    setNotificationFeedback(res.message);
+                    setIsTestingNotification(false);
+                    setTimeout(() => setNotificationFeedback(null), 4500);
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-500/10 text-xs font-bold text-amber-700 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 cursor-pointer flex items-center gap-1 transition-colors"
+                >
+                  <BellRing className="w-3.5 h-3.5" />
+                  <span>{isTestingNotification ? 'Sending...' : 'Test Morning Alert'}</span>
+                </button>
+              </div>
             </div>
 
+            {notificationFeedback && (
+              <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-xs font-medium text-indigo-700 dark:text-indigo-300 animate-fadeIn">
+                {notificationFeedback}
+              </div>
+            )}
+
             <div className="space-y-3.5">
-              <div className="flex items-center justify-between p-2 rounded-2xl glass-subcard">
+              {/* Master Notification Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-2xl glass-subcard">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Device Notifications (Master)</p>
+                    {notificationSettings.enabled !== false ? (
+                      <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
+                        Active
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                        Disabled
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Enable system push alerts and reminder popups</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notificationSettings.enabled !== false}
+                  onChange={async (e) => {
+                    const checked = e.target.checked;
+                    setNotificationFeedback(null);
+                    await updateNotificationSettings({ enabled: checked });
+                    if (checked) {
+                      try {
+                        await requestNotificationPermission();
+                      } catch {
+                        // Handled smoothly with in-app audio & alerts
+                      }
+                      setNotificationFeedback('✅ Notifications enabled! Morning alerts and sound chimes are active.');
+                      setTimeout(() => setNotificationFeedback(null), 4000);
+                    }
+                  }}
+                  className="w-5 h-5 rounded-lg text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                />
+              </div>
+
+              {/* Day-Start Morning Notification Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-2xl glass-subcard">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Daily Morning Day-Start Notification</p>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300">
+                      {formatTimeTo12Hour(wakeTime || reminderTime || '07:00')}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Alerts {name.split(' ')[0] || 'you'} at {formatTimeTo12Hour(wakeTime || reminderTime || '07:00')} when your day starts with scheduled habits
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notificationSettings.dailyUnfinishedReminder !== false}
+                  onChange={(e) => updateNotificationSettings({ dailyUnfinishedReminder: e.target.checked })}
+                  className="w-5 h-5 rounded-lg text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-2xl glass-subcard">
                 <div>
                   <p className="text-xs font-bold text-slate-900 dark:text-white">On-Time Habit Reminders</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">Receive alerts at exact scheduled habit times</p>
@@ -463,20 +561,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 />
               </div>
 
-              <div className="flex items-center justify-between p-2 rounded-2xl glass-subcard">
-                <div>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">Morning Wellness Briefing</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Daily 08:00 AM summary of your active goals</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={notificationSettings.dailyBriefing}
-                  onChange={(e) => updateNotificationSettings({ dailyBriefing: e.target.checked })}
-                  className="w-5 h-5 rounded-lg text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-2 rounded-2xl glass-subcard">
+              <div className="flex items-center justify-between p-3 rounded-2xl glass-subcard">
                 <div>
                   <p className="text-xs font-bold text-slate-900 dark:text-white">Evening Reflection Prompt</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">Nightly 09:00 PM mood and gratitude check-in</p>
@@ -489,7 +574,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 />
               </div>
 
-              <div className="flex items-center justify-between p-2 rounded-2xl glass-subcard">
+              <div className="flex items-center justify-between p-3 rounded-2xl glass-subcard">
                 <div>
                   <p className="text-xs font-bold text-slate-900 dark:text-white">Celebratory Audio Effects</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">Play melodic audio chime upon habit completion</p>
@@ -746,6 +831,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
             <button
               type="button"
+              onClick={() => setIsPrivacyOpen(true)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-bold text-xs hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Privacy Policy & Data Safety</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleResetData}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-2xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 text-xs font-semibold transition-colors cursor-pointer"
             >
@@ -755,6 +849,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* In-App Privacy Policy Modal */}
+      <PrivacyPolicyModal 
+        isOpen={isPrivacyOpen} 
+        onClose={() => setIsPrivacyOpen(false)} 
+      />
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserProfile, HabitCategory, Habit } from '../types';
-import { StorageService, DEFAULT_PROFILE, generateStarterHabitsForUser, getTodayDateString } from '../services/storage';
+import { StorageService, DEFAULT_PROFILE, INITIAL_NOTIFICATIONS, generateStarterHabitsForUser, getTodayDateString } from '../services/storage';
 import { 
   getSupabase, 
   isSupabaseConfigured, 
@@ -731,6 +731,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     StorageService.saveCompletionsForUser(newId, []);
     StorageService.saveMoodsForUser(newId, []);
     StorageService.saveHealthMetricsForUser(newId, []);
+    StorageService.saveNotificationSettings({
+      ...INITIAL_NOTIFICATIONS,
+      reminderTime: profileData.reminderTimePreference || profileData.wakeTime || '07:00',
+    }, newId);
     StorageService.saveProfile(newProfile);
 
     // Sync to Supabase if configured

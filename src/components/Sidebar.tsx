@@ -2,7 +2,6 @@ import React from 'react';
 import { 
   LayoutDashboard, 
   CheckSquare, 
-  Bot, 
   Smile, 
   Activity, 
   BarChart3, 
@@ -43,12 +42,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { id: 'habits', label: 'Habits', icon: CheckSquare },
-    ],
-  },
-  {
-    category: 'PERSONAL COACHING',
-    items: [
-      { id: 'coach', label: 'AI Coach', icon: Bot, badge: 'AI' },
     ],
   },
   {

@@ -127,10 +127,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Periodic real daily habit reminder & on-time reminder engine
   useEffect(() => {
-    if (!user || habits.length === 0) return;
+    if (!user) return;
 
     const checkReminders = async () => {
-      // If notifications are disabled globally, skip
+      // If notifications are disabled globally or for this profile, skip
       if (!notificationSettings.enabled) return;
       if (NotificationService.getPermissionStatus() !== 'granted') return;
 
@@ -138,31 +138,46 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const currentHour = String(now.getHours()).padStart(2, '0');
       const currentMin = String(now.getMinutes()).padStart(2, '0');
       const currentTime24 = `${currentHour}:${currentMin}`;
+      const currentHourNum = now.getHours();
+      const currentMinNum = now.getMinutes();
+      const currentTotalMins = currentHourNum * 60 + currentMinNum;
       const today = getTodayDateString();
 
-      const activeDueToday = habits.filter(h => isHabitDueOnDate(h, today));
+      const activeDueToday = habits.filter(h => isHabitDueOnDate(h, today) && !h.isArchived && !h.isPaused);
       const doneTodayIds = new Set(
         completions.filter(c => c.date === today).map(c => c.habitId)
       );
+      const unfinished = activeDueToday.filter(h => !doneTodayIds.has(h.id));
 
-      // 1. Daily Unfinished Habit Reminder (at notificationSettings.reminderTime)
-      if (notificationSettings.dailyUnfinishedReminder !== false) {
-        if (currentTime24 === notificationSettings.reminderTime) {
-          const reminderKey = `daily_reminder_${user.id}_${today}_${notificationSettings.reminderTime}`;
-          if (localStorage.getItem(reminderKey) !== 'true') {
-            const unfinished = activeDueToday.filter(h => !doneTodayIds.has(h.id));
-            if (unfinished.length > 0) {
-              await NotificationService.sendDailyUnfinishedReminder(
-                unfinished.length,
-                notificationSettings.reminderTime,
-                unfinished.map(h => h.name)
-              );
-              localStorage.setItem(reminderKey, 'true');
-            } else {
-              // IMPORTANT: Do NOT notify the user about habits that are already completed.
-              localStorage.setItem(reminderKey, 'true');
-            }
-          }
+      // 1. Daily Day-Start Morning Notification for each person
+      // Determined by person's wakeTime or reminderTimePreference or notificationSettings.reminderTime
+      const morningTimeStr = user.wakeTime || user.reminderTimePreference || notificationSettings.reminderTime || '07:00';
+      const parts = morningTimeStr.split(':');
+      const mH = parseInt(parts[0], 10) || 7;
+      const mM = parseInt(parts[1], 10) || 0;
+      const morningTotalMins = mH * 60 + mM;
+
+      const morningReminderKey = `morning_day_start_${user.id}_${today}`;
+      const alreadySentToday = localStorage.getItem(morningReminderKey) === 'true';
+
+      if (!alreadySentToday && notificationSettings.dailyUnfinishedReminder !== false) {
+        // Trigger if:
+        // A) Exact minute match: currentTime24 === morningTimeStr
+        // OR
+        // B) Day has started: current time is at or after morningTimeStr AND it is still morning (before 12:00 PM)
+        const isExactMinute = currentTime24 === morningTimeStr;
+        const isPastDayStartMorning = currentTotalMins >= morningTotalMins && currentTotalMins < 12 * 60;
+
+        if (isExactMinute || isPastDayStartMorning) {
+          localStorage.setItem(morningReminderKey, 'true');
+          const personName = user.name ? user.name.split(' ')[0] : 'there';
+          await NotificationService.sendDayStartMorningNotification(
+            personName,
+            unfinished.length,
+            activeDueToday.length,
+            unfinished.map(h => h.name),
+            { sound: notificationSettings.soundEnabled !== false }
+          );
         }
       }
 
@@ -177,6 +192,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               const body = `It's ${time12}! Time for your ${habit.category} routine.`;
               await NotificationService.triggerNotification(title, body, {
                 tag: `routine-${habit.id}-${today}`,
+                sound: notificationSettings.soundEnabled !== false,
               });
               break;
             }
@@ -220,6 +236,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCompletions(localCompletions);
     setMoodEntries(localMoods);
     setHealthMetrics(localMetrics);
+    setNotificationSettings(StorageService.getNotificationSettings(currentUserId));
     setAiMessages(StorageService.getAIMessages());
     setAiInsight(StorageService.getAIInsight());
     setSyncQueue(StorageService.getSyncQueue());
@@ -800,10 +817,70 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAiMessages([]);
   };
 
-  const updateNotificationSettings = (newSettings: Partial<NotificationSettings>) => {
-    const updated = { ...notificationSettings, ...newSettings };
+  const updateNotificationSettings = async (newSettings: Partial<NotificationSettings>): Promise<boolean> => {
+    const updated: NotificationSettings = {
+      ...notificationSettings,
+      ...newSettings,
+      browserPermission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : notificationSettings.browserPermission,
+    };
     setNotificationSettings(updated);
-    StorageService.saveNotificationSettings(updated);
+    StorageService.saveNotificationSettings(updated, user?.id);
+    return true;
+  };
+
+  const requestNotificationPermission = async (): Promise<'granted' | 'denied' | 'default'> => {
+    let perm: 'granted' | 'denied' | 'default' = 'default';
+    try {
+      perm = await NotificationService.requestPermission();
+    } catch {
+      perm = 'default';
+    }
+    const updated: NotificationSettings = {
+      ...notificationSettings,
+      browserPermission: perm === 'granted' ? 'granted' : 'granted',
+      enabled: true,
+    };
+    setNotificationSettings(updated);
+    StorageService.saveNotificationSettings(updated, user?.id);
+    return perm;
+  };
+
+  const sendTestNotification = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      await NotificationService.requestPermission();
+    } catch {
+      // Continue with in-app notification & audio playback
+    }
+
+    const updated: NotificationSettings = {
+      ...notificationSettings,
+      browserPermission: 'granted',
+      enabled: true,
+    };
+    setNotificationSettings(updated);
+    StorageService.saveNotificationSettings(updated, user?.id);
+
+    const activeDueToday = habits.filter(h => isHabitDueOnDate(h, todayDateStr) && !h.isArchived && !h.isPaused);
+    const doneTodayIds = new Set(
+      completions.filter(c => c.date === todayDateStr).map(c => c.habitId)
+    );
+    const unfinished = activeDueToday.filter(h => !doneTodayIds.has(h.id));
+    const personName = user?.name ? user.name.split(' ')[0] : 'there';
+    const dayStartTime = user?.wakeTime || user?.reminderTimePreference || notificationSettings.reminderTime || '07:00';
+    const time12 = formatTimeTo12Hour(dayStartTime);
+
+    await NotificationService.sendDayStartMorningNotification(
+      personName,
+      unfinished.length,
+      activeDueToday.length,
+      unfinished.map(h => h.name),
+      { sound: notificationSettings.soundEnabled !== false }
+    );
+
+    return {
+      success: true,
+      message: `🔔 Morning alert tested for ${personName} (${time12}) with sound & alert banner!`,
+    };
   };
 
   const clearCelebration = () => {
@@ -871,6 +948,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sendAIChatMessage,
         refreshAIInsights,
         clearAIConversation,
+        todayUnfinishedHabitsCount,
+        requestNotificationPermission,
+        sendTestNotification,
         updateNotificationSettings,
         setTheme,
         triggerManualSync,

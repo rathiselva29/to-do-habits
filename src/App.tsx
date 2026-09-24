@@ -17,12 +17,12 @@ import { AddProfileModal } from './components/AddProfileModal';
 import { ProfileSwitcherModal } from './components/ProfileSwitcherModal';
 import { DashboardView } from './components/DashboardView';
 import { HabitsView } from './components/HabitsView';
-import { AICoachView } from './components/AICoachView';
 import { MoodTrackerView } from './components/MoodTrackerView';
 import { HealthMetricsView } from './components/HealthMetricsView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { CalendarView } from './components/CalendarView';
 import { ProfileView } from './components/ProfileView';
+import { InAppNotificationToast } from './components/InAppNotificationToast';
 import { Habit } from './types';
 import { Logo } from './components/Logo';
 
@@ -146,15 +146,13 @@ function AppContent() {
             />
           )}
 
-          {activeTab === 'coach' && <AICoachView />}
-
           {activeTab === 'mood' && <MoodTrackerView setActiveTab={setActiveTab} />}
 
           {activeTab === 'health' && <HealthMetricsView setActiveTab={setActiveTab} />}
 
           {activeTab === 'analytics' && <AnalyticsView />}
 
-          {activeTab === 'calendar' && <CalendarView />}
+          {activeTab === 'calendar' && <CalendarView setActiveTab={setActiveTab} />}
 
           {activeTab === 'profile' && (
             <ProfileView 
@@ -203,6 +201,9 @@ function AppContent() {
         onClose={() => setIsProfileSwitcherOpen(false)}
         onOpenAddProfile={() => setIsAddProfileOpen(true)}
       />
+
+      {/* In-App Live Notification Toast */}
+      <InAppNotificationToast />
     </div>
   );
 }

@@ -601,25 +601,48 @@ export const StorageService = {
     this.saveHealthMetrics(updated);
   },
 
-  getNotificationSettings(): NotificationSettings {
-    const raw = localStorage.getItem(STORAGE_KEYS.NOTIFICATION_SETTINGS);
+  getNotificationSettings(userId?: string): NotificationSettings {
+    const profile = userId ? this.getProfiles().find(p => p.id === userId) : this.getProfile();
+    const profileId = userId || profile?.id;
+    const userKey = profileId ? `${STORAGE_KEYS.NOTIFICATION_SETTINGS}_${profileId}` : STORAGE_KEYS.NOTIFICATION_SETTINGS;
+    
+    let raw = localStorage.getItem(userKey);
+    if (!raw && profileId) {
+      raw = localStorage.getItem(STORAGE_KEYS.NOTIFICATION_SETTINGS);
+    }
+
+    const defaultReminderTime = profile?.reminderTimePreference || profile?.wakeTime || INITIAL_NOTIFICATIONS.reminderTime || '07:00';
+
     if (!raw) {
-      this.saveNotificationSettings(INITIAL_NOTIFICATIONS);
-      return INITIAL_NOTIFICATIONS;
+      const initial: NotificationSettings = {
+        ...INITIAL_NOTIFICATIONS,
+        reminderTime: defaultReminderTime,
+      };
+      this.saveNotificationSettings(initial, profileId);
+      return initial;
     }
     try {
       const parsed = JSON.parse(raw);
       return {
         ...INITIAL_NOTIFICATIONS,
+        reminderTime: defaultReminderTime,
         ...parsed,
         browserPermission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : (parsed.browserPermission || 'default'),
       };
     } catch {
-      return INITIAL_NOTIFICATIONS;
+      return {
+        ...INITIAL_NOTIFICATIONS,
+        reminderTime: defaultReminderTime,
+      };
     }
   },
 
-  saveNotificationSettings(settings: NotificationSettings): void {
+  saveNotificationSettings(settings: NotificationSettings, userId?: string): void {
+    const profileId = userId || this.getProfile()?.id;
+    if (profileId) {
+      const userKey = `${STORAGE_KEYS.NOTIFICATION_SETTINGS}_${profileId}`;
+      localStorage.setItem(userKey, JSON.stringify(settings));
+    }
     localStorage.setItem(STORAGE_KEYS.NOTIFICATION_SETTINGS, JSON.stringify(settings));
   },
 
