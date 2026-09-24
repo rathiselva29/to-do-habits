@@ -326,7 +326,11 @@ const HABIT_RECOMMENDATIONS_CATALOG: SuggestedHabitTemplate[] = [
   },
 ];
 
-export const MoodTrackerView: React.FC = () => {
+interface MoodTrackerViewProps {
+  setActiveTab?: (tab: string) => void;
+}
+
+export const MoodTrackerView: React.FC<MoodTrackerViewProps> = ({ setActiveTab }) => {
   const { moodEntries, habits, logMood, createHabit } = useApp();
   const todayStr = getTodayDateString();
 
@@ -451,21 +455,34 @@ export const MoodTrackerView: React.FC = () => {
   return (
     <div className="space-y-6 sm:space-y-8 animate-fadeIn pb-16">
       {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="p-1.5 rounded-xl bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 shadow-2xs">
-            <Smile className="w-4 h-4" />
-          </span>
-          <span className="text-xs font-black uppercase tracking-wider text-indigo-700 dark:text-teal-300">
-            Emotional Wellbeing & Habit Synergy
-          </span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="p-1.5 rounded-xl bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 shadow-2xs">
+              <Smile className="w-4 h-4" />
+            </span>
+            <span className="text-xs font-black uppercase tracking-wider text-indigo-700 dark:text-teal-300">
+              Emotional Wellbeing & Habit Synergy
+            </span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+            Mood Tracker & Adaptive Habit Guidance
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-200 mt-1 max-w-3xl leading-relaxed">
+            Log your emotional state to receive instant, neuro-informed habit recommendations and actionable routines tailored to your current energy.
+          </p>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-          Mood Tracker & Adaptive Habit Guidance
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-200 mt-1 max-w-3xl leading-relaxed">
-          Log your emotional state to receive instant, neuro-informed habit recommendations and actionable routines tailored to your current energy.
-        </p>
+
+        {setActiveTab && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('health')}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl glass-card text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-indigo-400 self-start sm:self-auto shadow-xs transition-all cursor-pointer"
+          >
+            <Activity className="w-4 h-4 text-teal-500" />
+            <span>Health Metrics →</span>
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

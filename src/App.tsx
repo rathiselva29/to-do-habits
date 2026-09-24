@@ -148,9 +148,9 @@ function AppContent() {
 
           {activeTab === 'coach' && <AICoachView />}
 
-          {activeTab === 'mood' && <MoodTrackerView />}
+          {activeTab === 'mood' && <MoodTrackerView setActiveTab={setActiveTab} />}
 
-          {activeTab === 'health' && <HealthMetricsView />}
+          {activeTab === 'health' && <HealthMetricsView setActiveTab={setActiveTab} />}
 
           {activeTab === 'analytics' && <AnalyticsView />}
 

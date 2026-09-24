@@ -43,7 +43,11 @@ import {
 } from '../utils/healthCalculations';
 import { IconRenderer } from './IconRenderer';
 
-export const HealthMetricsView: React.FC = () => {
+interface HealthMetricsViewProps {
+  setActiveTab?: (tab: string) => void;
+}
+
+export const HealthMetricsView: React.FC<HealthMetricsViewProps> = ({ setActiveTab }) => {
   const { user } = useAuth();
   const { 
     healthMetrics, 
@@ -326,29 +330,42 @@ export const HealthMetricsView: React.FC = () => {
           </p>
         </div>
 
-        {/* Section Navigation Pills */}
-        <div className="flex items-center gap-1.5 p-1 rounded-2xl glass-subcard self-start sm:self-auto border border-slate-200/80 dark:border-slate-800">
-          <button
-            onClick={() => setActiveSection('biometrics')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeSection === 'biometrics'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400'
-            }`}
-          >
-            Biometrics & Vitals
-          </button>
-          <button
-            onClick={() => setActiveSection('advice')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeSection === 'advice'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Daily Routine Advice</span>
-          </button>
+        {/* Section Navigation Pills & Wellness Switcher */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {setActiveTab && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('mood')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl glass-card text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-indigo-400 shadow-xs transition-all cursor-pointer"
+            >
+              <Smile className="w-3.5 h-3.5 text-amber-500" />
+              <span>← Mood Tracker</span>
+            </button>
+          )}
+
+          <div className="flex items-center gap-1.5 p-1 rounded-2xl glass-subcard border border-slate-200/80 dark:border-slate-800">
+            <button
+              onClick={() => setActiveSection('biometrics')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeSection === 'biometrics'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400'
+              }`}
+            >
+              Biometrics & Vitals
+            </button>
+            <button
+              onClick={() => setActiveSection('advice')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeSection === 'advice'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Daily Routine Advice</span>
+            </button>
+          </div>
         </div>
       </div>
 

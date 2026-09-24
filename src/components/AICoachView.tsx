@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Bot, 
   Sparkles, 
@@ -16,22 +16,41 @@ import {
   ChevronRight,
   ShieldCheck,
   Award,
-  ArrowRight,
+  Clock,
+  Check,
   HelpCircle,
-  Clock
+  Calendar,
+  Activity,
+  UserCheck
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { AI_COACH_KNOWLEDGE_BASE, AIQuestionItem } from '../data/aiQuestions';
+import { 
+  AI_COACH_KNOWLEDGE_BASE, 
+  AIQuestionItem, 
+  AIQuestionOption,
+  generatePersonalizedAdvice 
+} from '../data/aiQuestions';
 
 export const AICoachView: React.FC = () => {
   const { user } = useAuth();
   const { habits, completions, wellnessScore, aiInsight, refreshAIInsights } = useApp();
 
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('reading');
-  const [selectedQuestion, setSelectedQuestion] = useState<AIQuestionItem>(
-    AI_COACH_KNOWLEDGE_BASE[0].questions[0]
+  const [selectedQuestionId, setSelectedQuestionId] = useState<string>(
+    AI_COACH_KNOWLEDGE_BASE[0].questions[0].id
   );
+  // Track selected option per question, defaulting to 'A'
+  const [selectedOptionsMap, setSelectedOptionsMap] = useState<Record<string, 'A' | 'B' | 'C' | 'D'>>({
+    'read-pace': 'B', // Standard 15 pages
+    'read-timing': 'A', // Morning
+    'morn-priority': 'A',
+    'morn-caffeine': 'B',
+    'proc-root': 'A',
+    'streak-status': 'B',
+    'sleep-delay': 'A',
+  });
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshingInsight, setIsRefreshingInsight] = useState(false);
   const [insightFeedback, setInsightFeedback] = useState<string | null>(null);
@@ -39,23 +58,56 @@ export const AICoachView: React.FC = () => {
   const activeCategory = AI_COACH_KNOWLEDGE_BASE.find(c => c.id === selectedCategoryId) || AI_COACH_KNOWLEDGE_BASE[0];
 
   // All questions flattened for search
-  const allQuestions = AI_COACH_KNOWLEDGE_BASE.flatMap(c => c.questions);
-  const filteredQuestions = searchQuery.trim()
-    ? allQuestions.filter(q => 
-        q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.directAnswer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.category.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : activeCategory.questions;
+  const allQuestions = useMemo(() => AI_COACH_KNOWLEDGE_BASE.flatMap(c => c.questions), []);
+  const filteredQuestions = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return activeCategory.questions;
+    }
+    const query = searchQuery.toLowerCase();
+    return allQuestions.filter(q => 
+      q.question.toLowerCase().includes(query) ||
+      q.categoryName.toLowerCase().includes(query) ||
+      q.options.some(opt => opt.label.toLowerCase().includes(query) || opt.description.toLowerCase().includes(query))
+    );
+  }, [searchQuery, activeCategory, allQuestions]);
+
+  // Current selected question
+  const currentQuestion = useMemo(() => {
+    return allQuestions.find(q => q.id === selectedQuestionId) || allQuestions[0];
+  }, [allQuestions, selectedQuestionId]);
+
+  // Current selected option for the question (guaranteed to be A, B, C, or D)
+  const currentOptionId = selectedOptionsMap[currentQuestion.id] || 'A';
+  const currentOption = useMemo(() => {
+    return currentQuestion.options.find(o => o.id === currentOptionId) || currentQuestion.options[0];
+  }, [currentQuestion, currentOptionId]);
+
+  // Generate personalized advice using the user's actual selected option and current habit data
+  const coachAdvice = useMemo(() => {
+    return generatePersonalizedAdvice(
+      currentQuestion,
+      currentOption,
+      user,
+      habits,
+      completions
+    );
+  }, [currentQuestion, currentOption, user, habits, completions]);
+
+  const handleSelectOption = (optionId: 'A' | 'B' | 'C' | 'D') => {
+    setSelectedOptionsMap(prev => ({
+      ...prev,
+      [currentQuestion.id]: optionId,
+    }));
+  };
 
   const handleRefreshInsights = async () => {
     setIsRefreshingInsight(true);
     try {
       await refreshAIInsights();
-      setInsightFeedback('✅ Insights refreshed with your latest tracking data!');
+      setInsightFeedback('✅ Habit diagnostics refreshed with your latest tracking data!');
       setTimeout(() => setInsightFeedback(null), 3500);
     } catch {
-      setInsightFeedback('✅ Insights updated.');
+      setInsightFeedback('✅ Diagnostics updated.');
       setTimeout(() => setInsightFeedback(null), 3500);
     } finally {
       setIsRefreshingInsight(false);
@@ -73,8 +125,9 @@ export const AICoachView: React.FC = () => {
     }
   };
 
-  // Compute calculated metrics for insights section
+  // Metrics for diagnostics section
   const totalCompletions = completions.length;
+  const activeHabits = habits.filter(h => !h.isArchived);
   const bestStreak = habits.reduce((max, h) => Math.max(max, h.streak), 0);
   const topHabit = habits.find(h => h.streak === bestStreak) || habits[0];
 
@@ -88,14 +141,14 @@ export const AICoachView: React.FC = () => {
               <Bot className="w-4 h-4" />
             </span>
             <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-              Structured AI Coaching & Insights
+              Personalized AI Coach
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             Habit Intelligence & Advisory
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Exact behavioral guidance, curated habit protocols, and verified daily answers.
+            Personalized advice matching your selected option and real habit tracking data.
           </p>
         </div>
 
@@ -127,7 +180,7 @@ export const AICoachView: React.FC = () => {
             <span>Arranged Wellness & Habit Diagnostics</span>
           </h2>
           <span className="text-xs font-semibold text-slate-400">
-            Based on {totalCompletions} logged records
+            Based on {totalCompletions} logged records ({activeHabits.length} active habits)
           </span>
         </div>
 
@@ -222,15 +275,15 @@ export const AICoachView: React.FC = () => {
         </div>
       </div>
 
-      {/* ================= SECTION 2: CURATED QUESTIONS & EXACT ANSWERS ================= */}
+      {/* ================= SECTION 2: STRUCTURED QUESTIONS WITH 4 PREDEFINED OPTIONS ================= */}
       <div className="space-y-4">
         <div>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Bot className="w-5 h-5 text-indigo-500" />
-            <span>Select a Topic & Question for Exact Answers</span>
+            <span>Select a Topic & Answer with Your Option</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Choose a question category below. Every question delivers an exact, authoritative scientific protocol without random fluff.
+            Select a question below, choose from exactly 4 predefined options, and receive personalized advice based on your selection and live habit data.
           </p>
         </div>
 
@@ -245,7 +298,7 @@ export const AICoachView: React.FC = () => {
                 onClick={() => {
                   setSelectedCategoryId(cat.id);
                   setSearchQuery('');
-                  setSelectedQuestion(cat.questions[0]);
+                  setSelectedQuestionId(cat.questions[0].id);
                 }}
                 className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-xs ${
                   isSelected
@@ -275,34 +328,43 @@ export const AICoachView: React.FC = () => {
           />
         </div>
 
-        {/* Two-Column Layout: Questions List + Exact Answer Display */}
+        {/* Two-Column Layout: Questions List + 4-Option Selector & Personalized Answer */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* Left Column: Curated Questions List (5 cols) */}
-          <div className="lg:col-span-5 space-y-2.5">
+          {/* Left Column: Curated Questions List (4 cols) */}
+          <div className="lg:col-span-4 space-y-2.5">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               {searchQuery ? `Matching Questions (${filteredQuestions.length})` : `${activeCategory.name} Questions`}
             </p>
 
-            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-[580px] overflow-y-auto pr-1">
               {filteredQuestions.map((q) => {
-                const isActive = selectedQuestion.id === q.id;
+                const isActive = currentQuestion.id === q.id;
+                const chosenOpt = selectedOptionsMap[q.id] || 'A';
+
                 return (
                   <button
                     key={q.id}
                     type="button"
-                    onClick={() => setSelectedQuestion(q)}
-                    className={`w-full text-left p-3.5 rounded-2xl transition-all cursor-pointer flex items-start justify-between gap-3 ${
+                    onClick={() => setSelectedQuestionId(q.id)}
+                    className={`w-full text-left p-3.5 rounded-2xl transition-all cursor-pointer flex items-start justify-between gap-2.5 ${
                       isActive
                         ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-2 ring-indigo-400/50'
                         : 'glass-card hover:border-indigo-400 text-slate-800 dark:text-slate-200'
                     }`}
                   >
-                    <div className="space-y-1">
-                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400'
-                      }`}>
-                        {q.category}
-                      </span>
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                          isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400'
+                        }`}>
+                          {q.categoryName}
+                        </span>
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${
+                          isActive ? 'bg-white/20 text-white' : 'bg-slate-200/60 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300'
+                        }`}>
+                          Opt: {chosenOpt}
+                        </span>
+                      </div>
                       <p className="text-xs sm:text-sm font-bold leading-snug">
                         {q.question}
                       </p>
@@ -322,46 +384,129 @@ export const AICoachView: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Column: Exact Authoritative Answer Card (7 cols) */}
-          <div className="lg:col-span-7">
-            <div className="p-6 sm:p-7 rounded-3xl glass-card border border-indigo-500/20 shadow-xl space-y-6 animate-fadeIn">
-              {/* Question Header */}
-              <div className="space-y-2 border-b border-slate-200/60 dark:border-white/10 pb-4">
+          {/* Right Column: 4 Predefined Options Selector & Personalized Advice (8 cols) */}
+          <div className="lg:col-span-8 space-y-5">
+            {/* Top Card: Question Header & 4 Predefined Options */}
+            <div className="p-5 sm:p-6 rounded-3xl glass-card border border-indigo-500/20 shadow-md space-y-4">
+              <div className="space-y-1.5 border-b border-slate-200/60 dark:border-white/10 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                    {selectedQuestion.category}
+                    {currentQuestion.categoryName}
                   </span>
-                  {selectedQuestion.keyMetric && (
-                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      {selectedQuestion.keyMetric}
-                    </span>
-                  )}
+                  <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    Exactly 4 Predefined Options
+                  </span>
                 </div>
                 <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white leading-snug">
-                  {selectedQuestion.question}
+                  {currentQuestion.question}
                 </h3>
+                <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 pt-1">
+                  {currentQuestion.contextPrompt}
+                </p>
               </div>
 
-              {/* Exact Direct Answer Box */}
+              {/* 4 PREDEFINED OPTIONS GRID */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {currentQuestion.options.map((opt) => {
+                  const isSelected = opt.id === currentOptionId;
+
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => handleSelectOption(opt.id)}
+                      className={`p-3.5 rounded-2xl text-left transition-all cursor-pointer flex flex-col justify-between gap-2 border ${
+                        isSelected
+                          ? 'bg-indigo-50 dark:bg-indigo-950/70 border-indigo-500 shadow-sm ring-2 ring-indigo-500/30'
+                          : 'glass-subcard hover:border-indigo-300 dark:hover:border-indigo-700'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center ${
+                            isSelected
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                          }`}>
+                            {opt.id}
+                          </span>
+                          {isSelected && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>Selected</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-xs font-bold leading-snug ${
+                          isSelected ? 'text-indigo-950 dark:text-indigo-100 font-extrabold' : 'text-slate-800 dark:text-slate-200'
+                        }`}>
+                          {opt.label}
+                        </p>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+                        {opt.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Bottom Card: Verified Personalized Advice matching the chosen option & real habit data */}
+            <div className="p-6 sm:p-7 rounded-3xl glass-card border border-indigo-500/20 shadow-xl space-y-5 animate-fadeIn">
+              {/* Internal Check Verification Badge */}
+              <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <div className="text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-extrabold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider text-[10px]">
+                      Internal Check: Verified Match
+                    </span>
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 text-[10px] font-bold">
+                      Option {coachAdvice.selectedOptionId} Selected
+                    </span>
+                  </div>
+                  <p className="text-emerald-700 dark:text-emerald-300 mt-0.5 text-[11px]">
+                    {coachAdvice.internalCheckReport.verificationNotes}
+                  </p>
+                </div>
+              </div>
+
+              {/* User Data Context Anchor */}
+              <div className="p-3.5 rounded-2xl glass-subcard flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-300">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-indigo-500" />
+                  <span>Profile: <strong className="text-slate-900 dark:text-white">{coachAdvice.userDataSummary.userName}</strong></span>
+                </div>
+                <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  <span>{coachAdvice.userDataSummary.activeHabitsCount} Habits Tracked</span>
+                  <span>•</span>
+                  <span>{coachAdvice.userDataSummary.todayCompletedCount} Done Today</span>
+                  <span>•</span>
+                  <span>Peak Streak: {coachAdvice.userDataSummary.bestStreak}d</span>
+                </div>
+              </div>
+
+              {/* Personalized Direct Analysis */}
               <div className="space-y-2">
                 <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
                   <CheckCircle2 className="w-4 h-4 text-indigo-500" />
-                  <span>Exact Direct Answer</span>
+                  <span>Personalized Direct Advice</span>
                 </div>
-                <div className="p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/40 text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
-                  {selectedQuestion.directAnswer}
+                <div className="p-4 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/50 border border-indigo-200/70 dark:border-indigo-800/50 text-xs sm:text-sm text-slate-800 dark:text-slate-100 leading-relaxed font-medium">
+                  {coachAdvice.personalizedAnalysis}
                 </div>
               </div>
 
-              {/* Step-by-Step Action Protocol */}
+              {/* Action Steps */}
               <div className="space-y-2.5">
                 <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                   <Target className="w-4 h-4 text-emerald-500" />
-                  <span>Step-by-Step Action Protocol</span>
+                  <span>Step-by-Step Practical Protocol</span>
                 </div>
                 <div className="space-y-2">
-                  {selectedQuestion.protocol.map((step, idx) => (
+                  {coachAdvice.actionSteps.map((step, idx) => (
                     <div 
                       key={idx}
                       className="p-3 rounded-2xl glass-subcard flex items-start gap-3 text-xs sm:text-sm text-slate-700 dark:text-slate-300"
@@ -375,14 +520,25 @@ export const AICoachView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Golden Rule / Non-Negotiable Law */}
+              {/* Real-World Variability Note (No Single Universal Rule) */}
+              <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-850/80 border border-slate-200 dark:border-slate-750 text-slate-600 dark:text-slate-400 text-xs space-y-1">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Individual Variability Note</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  {coachAdvice.variabilityNote}
+                </p>
+              </div>
+
+              {/* Grounded Key Principle Takeaway */}
               <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-teal-500/10 border border-amber-500/20 text-slate-900 dark:text-white space-y-1">
                 <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-400">
                   <Award className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Core Golden Rule</span>
+                  <span>Grounded Core Principle</span>
                 </div>
                 <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 italic">
-                  "{selectedQuestion.goldenRule}"
+                  "{coachAdvice.groundedTakeaway}"
                 </p>
               </div>
             </div>
